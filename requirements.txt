@@ -4,3 +4,7 @@ gym-notices==0.0.8
 importlib-metadata==5.0.0
 numpy==1.23.3
 zipp==3.8.1
+
+torch==1.12.1
+omegaconf==2.2.3
+setuptools==57.4.0

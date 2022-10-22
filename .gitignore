@@ -1,0 +1,4 @@
+.idea/
+rough.py
+venv/
+*__pycache__**

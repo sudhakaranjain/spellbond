@@ -1,0 +1,6 @@
+model:
+  dropout: 0.10
+criterion:
+  loss_beta: 2
+optimizer:
+  lr: 1e-2
