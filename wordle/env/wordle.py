@@ -87,7 +87,7 @@ class WordleEnvBase(gym.Env):
             reward,
             self.done,
             {"aux": ""},
-            {"action_space": copy.deepcopy(self.action_space)},
+            {"action_space": self.action_space},
         )
 
     def reset(self) -> Tuple[np.ndarray, np.ndarray, Dict]:
