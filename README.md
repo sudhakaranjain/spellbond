@@ -2,9 +2,10 @@
 Gym environment for the game Wordle. A simple action, state, and observation is included, with a random agent. Note that the spaces are very simplistic, and only included for a working example of the env.
 
 ### How to run
-A game can be played by the random agent by running:
+Create python virtual environment and install the `requirements.txt` file.  
+Run the following command from `scripts` folder:
 ```commandline
-python main.py
+python run.py
 ```
 
 ### Variations
