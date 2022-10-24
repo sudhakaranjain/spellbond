@@ -15,57 +15,79 @@ logging.basicConfig(level=logging.INFO)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def train_actor(state, target_action, optimizer):
-    actor.train()
-    state, target_action = torch.tensor(state).to(device), torch.tensor(target_action).to(device)
-    optimizer.zero_grad()
-    action = actor(state.unsqueeze(dim=0))
-    loss = 1 - cos(action, target_action.unsqueeze(dim=0))
-    loss.backward()
-    optimizer.step()
-
-
-def train_critic(state, action, target_q, optimizer):
+def train_critic(state, next_state, reward, done, turn_no, optimizer):
+    with torch.no_grad():
+        critic.eval()
+        if done:
+            target_q = torch.tensor([[reward - turn_no ** 2]])
+        else:
+            target_q = reward - turn_no ** 2 + config.train.gamma * \
+                       critic(torch.tensor(next_state).reshape(-1, ).unsqueeze(dim=0))
     critic.train()
-    state, action, target_q = torch.tensor(state).to(device), torch.tensor(action).to(device), \
-                              torch.tensor(target_q).to(device)
-    s_a = torch.cat(state, action).unsqueeze(dim=0)
+    state = torch.tensor(state).view(-1,).unsqueeze(dim=0).to(device)
     optimizer.zero_grad()
-    predicted_q = critic(s_a)
-    loss = smooth_l1loss(predicted_q, target_q.unsqueeze(dim=0))
+    predicted_q = critic(state)
+    loss = smooth_l1loss(predicted_q, target_q)
     loss.backward()
     optimizer.step()
 
 
-def perform_action(state, action_space, words):
+def train_actor(state, next_state, reward, done, turn_no, target_action, optimizer):
+    tde = compute_TDE(state, next_state, reward, done, turn_no)
+    if tde > 0.0:
+        actor.train()
+        state = torch.tensor(state).view(-1, ).unsqueeze(dim=0).to(device)
+        target_action = torch.tensor(target_action).view(-1, ).unsqueeze(dim=0).to(device)
+        optimizer.zero_grad()
+        action = actor(state)
+        loss = smooth_l1loss(action, target_action) + (1 - cos(action, target_action))
+        loss.backward()
+        optimizer.step()
+
+
+def compute_TDE(state, next_state, reward, done, turn_no,):
+    with torch.no_grad():
+        if done:
+            target_q = reward - turn_no ** 2
+        else:
+            target_q = reward - turn_no ** 2 + config.train.gamma * \
+                       critic(torch.tensor(next_state).reshape(-1, ).unsqueeze(dim=0))
+        tde = target_q - critic(torch.tensor(state).reshape(-1, ).unsqueeze(dim=0))
+    return tde.item()
+
+
+def predict_action(state, action_space, words):
+    def softmax(x):
+        return np.exp(x) / np.exp(x).sum()
     with torch.no_grad():
         actor.eval()
-        predicted_action = actor(state).numpy()[0]
-    values = np.array([np.dot(predicted_action, action) for action in action_space])
-    return words[np.argmax(values)], action_space[np.argmax(values)]
+        predicted_action = actor(torch.tensor(state).view(-1, ).unsqueeze(dim=0).to(device)).numpy()[0]
+    values = softmax(np.array([np.dot(predicted_action, action.reshape(-1,)) for action in action_space]))
+    policy_choice = np.random.choice(len(action_space), p=values)
+    return action_space[policy_choice], words[policy_choice]
 
 
 def main(arg) -> None:
-    # Create the gym env and reset the state
-    env = gym.make(arg.env)
     optim_actor = torch.optim.Adam(actor.parameters(), config.optimizer.lr)
     optim_critic = torch.optim.Adam(critic.parameters(), config.optimizer.lr)
 
     for epoch in range(config.train.epochs):
-        state, action_space, _ = env.reset()
-        for i in range(env.max_turns):
-            # Choose a random action that has not been chosen yet
-            # predicted_word = np.random.choice(np.array(env.words))
-            predicted_word, action = perform_action(state, action_space, env.words)
-            LOGGER.info(f"Guessed word: {predicted_word}")
-            old_state = copy.deepcopy(state)
-            old_action_space = copy.deepcopy(action_space)
-            state, reward, done, _, info = env.step(predicted_word)
+        # Create the gym env and reset the state
+        env = gym.make(arg.env)
+        new_state, action_space, _ = env.reset()
+        for turn_no in range(env.max_turns):
+            action, word = predict_action(new_state, action_space, env.words)
+            LOGGER.info(f"Guessed word: {word}")
+            current_state = copy.deepcopy(new_state)
+            new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
+
+            train_critic(current_state, new_state, reward, done, turn_no, optim_critic)
+            train_actor(current_state, new_state, reward, done, turn_no, action, optim_actor)
 
             if done:
                 # If a reward is given, the correct word was guessed
-                if reward > 0:
+                if reward == 5:
                     LOGGER.info(
                         f"You guessed the correct word. The word was {env.goal_word}"
                     )
@@ -74,12 +96,6 @@ def main(arg) -> None:
                         f"You did not guess the correct word in {env.max_turns} turns. The correct word was {env.goal_word}"
                     )
                 break
-
-            else:
-                Q = compute_Q_value(critic, old_state, state)   # Yet to Implement
-                train_critic(old_state, action, Q, optim_critic)
-                optimal_action = greedy_critic_suggestion(critic, old_state, old_action_space)   # Yet to Implement
-                train_actor(old_state, optimal_action, optim_actor)
 
 
 if __name__ == "__main__":

@@ -7,7 +7,7 @@ from wordle.env.const import WORDLE_N, ALPHABETS, POSSIBILITIES
 
 def initialize_env(words):
     action_space = []
-    new_state = np.tile(np.array([1, 0, 0]), (len(ALPHABETS), WORDLE_N, 1))
+    new_state = np.tile(np.array([1, 0, 0], dtype=np.float32), (len(ALPHABETS), WORDLE_N, 1))
     for word in words:
         word = word.upper()
         action = np.zeros((len(ALPHABETS), WORDLE_N))
@@ -16,11 +16,12 @@ def initialize_env(words):
             action[alpha_idx, char_idx] = 1
         action_space.append(action)
     goal_idx = np.random.choice(len(words))
-    return words[goal_idx], action_space[goal_idx], np.array(action_space), new_state
+    return words[goal_idx], action_space[goal_idx], np.array(action_space, dtype=np.float32), new_state
 
 
-def update_action_space(state, action_space):
+def update_action_space(state, action_space, words):
     new_action_space = []
+    new_words = []
     correct_char = []
     for char_idx in range(WORDLE_N):
         for alpha_idx in ALPHABETS.values():
@@ -34,8 +35,9 @@ def update_action_space(state, action_space):
                 present = False
                 break
         if present:
+            new_words.append(words[act_idx])
             new_action_space.append(action)
-    return np.array(new_action_space)
+    return np.array(new_action_space), new_words
 
 
 def update_state(predicted_word, state, goal_action):
@@ -58,11 +60,3 @@ def compute_reward(state):
                 reward += 1
                 break
     return reward
-
-
-# _, new_goal_action, _, init_state = initialize_env((['cat']))
-# predict1 = 'him'
-# init_state = update_state(predict1, init_state, new_goal_action)
-# predict2 = 'rat'
-# init_state = update_state(predict2, init_state, new_goal_action)
-# print(init_state)

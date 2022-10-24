@@ -6,9 +6,8 @@ import gym
 import numpy as np
 from gym import spaces
 
-from wordle.env import state
-from wordle.env.const import REWARD, WORDLE_N
-from wordle.env.utils import initialize_env, update_action_space, update_state, compute_reward
+from wordle.env.const import WORDLE_N
+from wordle.env.functions import initialize_env, update_action_space, update_state, compute_reward
 
 dirname = os.path.dirname(__file__)
 WORDS_PATH = f"{dirname}/../../data/wordle_words.txt"
@@ -70,16 +69,11 @@ class WordleEnvBase(gym.Env):
                 "True' -- any further steps are undefined behavior."
             )
         self.state = update_state(predicted_word, self.state, self.goal_action)
-        self.action_spaces = update_action_space(self.state, self.action_spaces)
+        self.action_spaces, self.words = update_action_space(self.state, self.action_spaces, self.words)
         reward = compute_reward(self.state)
         self.remaining_steps -= 1
 
-        if predicted_word == self.goal_word:
-            self.done = True
-            reward = REWARD
-
-        elif self.remaining_steps == 0:
-
+        if predicted_word == self.goal_word or self.remaining_steps == 0:
             self.done = True
 
         return (
@@ -87,7 +81,7 @@ class WordleEnvBase(gym.Env):
             reward,
             self.done,
             {"aux": ""},
-            {"action_space": self.action_space},
+            {"action_space": self.action_spaces},
         )
 
     def reset(self) -> Tuple[np.ndarray, np.ndarray, Dict]:

@@ -26,9 +26,9 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, config):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) + WORDLE_N * len(ALPHABETS),
-                             WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS))
-        self.fc2 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS), len(ALPHABETS) * WORDLE_N)
+        self.fc1 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS),
+                             WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2)
+        self.fc2 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2, len(ALPHABETS) * WORDLE_N)
         self.fc3 = nn.Linear(len(ALPHABETS) * WORDLE_N, 1)
         self.dropout = nn.Dropout(config.model.dropout)
 

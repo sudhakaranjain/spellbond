@@ -1,6 +1,7 @@
 model:
   dropout: 0.10
 train:
-  epochs: 1000
+  gamma: 0.10
+  epochs: 100
 optimizer:
-  lr: 1e-2
+  lr: 2e-3
