@@ -1,0 +1,8 @@
+model:
+  dropout: 0.10
+train:
+  gamma: 0.10
+  epochs: 100
+  checkpoint_path: '../saved_models/'
+optimizer:
+  lr: 2e-3
