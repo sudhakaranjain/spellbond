@@ -11,7 +11,6 @@ omegaconf==2.2.3
 Pillow==9.2.0
 PyYAML==6.0
 requests==2.28.1
--e git+https://github.com/sudhakaranjain/spellbond.git@436430bf2d92e66774783cfcc2cdc0d180738606#egg=spellbond
 torch==1.12.1
 torchaudio==0.12.1
 torchvision==0.13.1
