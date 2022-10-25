@@ -44,7 +44,7 @@ class Wordle_RL:
         state = torch.cat((torch.tensor(state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
         self.optim_critic.zero_grad()
         predicted_q = self.critic(state)
-        loss = self.smooth_l1loss(predicted_q, target_q)
+        loss = self.smooth_l1loss(predicted_q, target_q.to(device))
         loss.backward()
         self.optim_critic.step()
 
@@ -73,7 +73,7 @@ class Wordle_RL:
             turn_encoding = torch.tensor([0] * MAX_TURNS)
             turn_encoding[turn_no] = 1
             state = torch.cat((torch.tensor(state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
-            tde = target_q - self.critic(state)
+            tde = target_q.to(device) - self.critic(state)
         return tde.item()
 
     def predict_action(self, state, action_space, words, training=True):
@@ -82,7 +82,7 @@ class Wordle_RL:
 
         with torch.no_grad():
             self.actor.eval()
-            predicted_action = self.actor(torch.tensor(state).view(-1, ).unsqueeze(dim=0).to(device)).numpy()[0]
+            predicted_action = self.actor(torch.tensor(state).view(-1, ).unsqueeze(dim=0).to(device)).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
         if training:
             policy_choice = np.random.choice(len(action_space), p=values)
