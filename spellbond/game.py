@@ -91,13 +91,14 @@ class Wordle_RL:
         return action_space[policy_choice], words[policy_choice]
 
     def train(self) -> None:
-        for epoch in range(self.config.train.epochs):
+        count = 0
+        while True:
             # Create the gym env and reset the state
             env = gym.make(self.arg.env)
             new_state, action_space, _ = env.reset()
             for turn_no in range(MAX_TURNS):
                 action, word = self.predict_action(new_state, action_space, env.words)
-                LOGGER.info(f"Guessed word: {word}")
+                # LOGGER.info(f"Guessed word: {word}")
                 current_state = copy.deepcopy(new_state)
                 new_state, reward, done, _, info = env.step(word)
                 action_space = info['action_space']
@@ -109,11 +110,15 @@ class Wordle_RL:
                     # If a reward is given, the correct word was guessed
                     if reward == 5:
                         LOGGER.info(
-                            f"You guessed the correct word. The word was {env.goal_word}"
+                            f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
                         )
+                        count += 1
                     else:
                         LOGGER.info(
                             f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
                         )
+                        count = 0
                     break
+            if count >= 10:
+                break
         torch.save(self.actor.state_dict(), os.path.join(self.config.train.checkpoint_path, 'actor.pth'))
