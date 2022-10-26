@@ -6,4 +6,4 @@ train:
   epochs: 100
   checkpoint_path: '../saved_models/'
 optimizer:
-  lr: 1e-2
+  lr: 1e-3
