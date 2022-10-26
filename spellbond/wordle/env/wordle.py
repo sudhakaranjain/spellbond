@@ -99,6 +99,11 @@ class WordleEnv10(WordleEnvBase):
         super().__init__(words=_load_words(10), max_turns=MAX_TURNS)
 
 
+class WordleEnv(WordleEnvBase):
+    def __init__(self, vocab_size):
+        super().__init__(words=_load_words(vocab_size), max_turns=MAX_TURNS)
+
+
 class WordleEnv100(WordleEnvBase):
     def __init__(self):
         super().__init__(words=_load_words(100), max_turns=MAX_TURNS)

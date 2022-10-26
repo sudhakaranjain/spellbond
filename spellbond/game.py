@@ -1,11 +1,13 @@
 import copy
 import logging
 import os
+from time import sleep
 
 import gym
 import numpy as np
 import torch
 import torch.nn as nn
+from tqdm import tqdm
 
 from spellbond.models import Actor, Critic
 from spellbond.wordle.env.const import MAX_TURNS
@@ -30,13 +32,13 @@ class Wordle_RL:
         with torch.no_grad():
             self.critic.eval()
             if done:
-                target_q = torch.tensor([[reward - turn_no ** 2]])
+                target_q = torch.tensor([[reward]])
             else:
                 next_turn_encoding = torch.tensor([0] * MAX_TURNS)
                 next_turn_encoding[turn_no + 1] = 1
                 next_state = torch.cat((torch.tensor(next_state).view(-1, ),
                                         next_turn_encoding)).to(device).unsqueeze(dim=0)
-                target_q = reward - turn_no ** 2 + self.config.train.gamma * self.critic(next_state)
+                target_q = reward + self.config.train.gamma * self.critic(next_state)
 
         self.critic.train()
         turn_encoding = torch.tensor([0] * MAX_TURNS)
@@ -63,13 +65,13 @@ class Wordle_RL:
     def compute_TDE(self, state, next_state, reward, done, turn_no, ):
         with torch.no_grad():
             if done:
-                target_q = torch.tensor([[reward - turn_no ** 2]])
+                target_q = torch.tensor([[reward]])
             else:
                 next_turn_encoding = torch.tensor([0] * MAX_TURNS)
                 next_turn_encoding[turn_no + 1] = 1
                 next_state = torch.cat((torch.tensor(next_state).view(-1, ),
                                         next_turn_encoding)).to(device).unsqueeze(dim=0)
-                target_q = reward - turn_no ** 2 + self.config.train.gamma * self.critic(next_state)
+                target_q = reward + self.config.train.gamma * self.critic(next_state)
             turn_encoding = torch.tensor([0] * MAX_TURNS)
             turn_encoding[turn_no] = 1
             state = torch.cat((torch.tensor(state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
@@ -91,34 +93,42 @@ class Wordle_RL:
         return action_space[policy_choice], words[policy_choice]
 
     def train(self) -> None:
-        count = 0
-        while True:
-            # Create the gym env and reset the state
-            env = gym.make(self.arg.env)
-            new_state, action_space, _ = env.reset()
-            for turn_no in range(MAX_TURNS):
-                action, word = self.predict_action(new_state, action_space, env.words)
-                # LOGGER.info(f"Guessed word: {word}")
-                current_state = copy.deepcopy(new_state)
-                new_state, reward, done, _, info = env.step(word)
-                action_space = info['action_space']
+        accuracy_buffer = [0] * 100
+        buffer_idx = 0
+        prev_accuracy = 0
 
-                self.train_critic(current_state, new_state, reward, done, turn_no)
-                self.train_actor(current_state, new_state, reward, done, turn_no, action)
+        with tqdm(total=100) as pbar:
+            while sum(accuracy_buffer) < 90:
+                # Create the gym env and reset the state
+                env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
+                new_state, action_space, _ = env.reset()
+                for turn_no in range(MAX_TURNS):
+                    action, word = self.predict_action(new_state, action_space, env.words)
+                    # LOGGER.info(f"Guessed word: {word}")
+                    current_state = copy.deepcopy(new_state)
+                    new_state, reward, done, _, info = env.step(word)
+                    action_space = info['action_space']
+                    # True reward calculated based on number of guesses used
+                    true_reward = reward - self.config.train.rho ** turn_no
 
-                if done:
-                    # If a reward is given, the correct word was guessed
-                    if reward == 5:
-                        LOGGER.info(
-                            f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
-                        )
-                        count += 1
-                    else:
-                        LOGGER.info(
-                            f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
-                        )
-                        count = 0
-                    break
-            if count >= 10:
-                break
+                    self.train_critic(current_state, new_state, true_reward, done, turn_no)
+                    self.train_actor(current_state, new_state, true_reward, done, turn_no, action)
+
+                    if done:
+                        # If a reward is given, the correct word was guessed
+                        if reward == 5:
+                            # LOGGER.info(
+                            #     f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
+                            # )
+                            accuracy_buffer[buffer_idx] = 1
+                        else:
+                            # LOGGER.info(
+                            #     f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
+                            # )
+                            accuracy_buffer[buffer_idx] = 0
+                        break
+                if sum(accuracy_buffer) > prev_accuracy:
+                    pbar.update(sum(accuracy_buffer) - prev_accuracy)
+                    prev_accuracy = sum(accuracy_buffer)
+                buffer_idx += 1 if buffer_idx < 99 else 0
         torch.save(self.actor.state_dict(), os.path.join(self.config.train.checkpoint_path, 'actor.pth'))

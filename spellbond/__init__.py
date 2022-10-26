@@ -15,6 +15,12 @@ register(
 )
 
 register(
+    id="WordleEnv",
+    entry_point="spellbond.wordle.env:WordleEnv",
+    max_episode_steps=500,
+)
+
+register(
     id="WordleEnvFull-v0",
     entry_point="spellbond.wordle.env:WordleEnvFull",
     max_episode_steps=500,
