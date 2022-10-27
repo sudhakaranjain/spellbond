@@ -96,14 +96,14 @@ class Wordle_RL:
         accuracy_buffer = [0] * 100
         buffer_idx = 0
         prev_accuracy = 0
-
+        epoch = 0
         with tqdm(total=100) as pbar:
             while sum(accuracy_buffer) < 90:
                 # Create the gym env and reset the state
                 env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
                 new_state, action_space, _ = env.reset()
                 for turn_no in range(MAX_TURNS):
-                    action, word = self.predict_action(new_state, action_space, env.words)
+                    action, word = self.predict_action(new_state, action_space, env.words, True)
                     # LOGGER.info(f"Guessed word: {word}")
                     current_state = copy.deepcopy(new_state)
                     new_state, reward, done, _, info = env.step(word)
@@ -130,5 +130,8 @@ class Wordle_RL:
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
+                    torch.save(self.actor.state_dict(), os.path.join(self.config.train.checkpoint_path, 'actor.pth'))
+                if epoch % 100000:
+                    print(f"Completed {epoch} epochs")
                 buffer_idx += 1 if buffer_idx < 99 else 0
-        torch.save(self.actor.state_dict(), os.path.join(self.config.train.checkpoint_path, 'actor.pth'))
+                epoch += 1
