@@ -1,7 +1,6 @@
 import copy
 import logging
 import os
-from time import sleep
 
 import gym
 import numpy as np
@@ -130,7 +129,8 @@ class Wordle_RL:
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
-                    torch.save(self.actor.state_dict(), os.path.join(self.config.train.checkpoint_path, 'actor.pth'))
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 if epoch % 100000:
                     print(f"Completed {epoch} epochs")
                 buffer_idx += 1 if buffer_idx < 99 else 0
