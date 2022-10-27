@@ -131,7 +131,7 @@ class Wordle_RL:
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
-                if epoch % 100000:
+                if epoch % 100000 == 0:
                     print(f"Completed {epoch} epochs")
                 buffer_idx += 1 if buffer_idx < 99 else 0
                 epoch += 1
