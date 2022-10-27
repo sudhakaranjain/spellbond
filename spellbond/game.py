@@ -108,7 +108,7 @@ class Wordle_RL:
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     # True reward calculated based on number of guesses used
-                    true_reward = reward - self.config.train.rho ** turn_no
+                    true_reward = reward - self.config.train.rho * turn_no
 
                     self.train_critic(current_state, new_state, true_reward, done, turn_no)
                     self.train_actor(current_state, new_state, true_reward, done, turn_no, action)
