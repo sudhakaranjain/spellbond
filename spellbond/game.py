@@ -107,7 +107,6 @@ class Wordle_RL:
             self.actor.eval()
             predicted_action = self.actor(torch.tensor(state).view(-1, ).unsqueeze(dim=0).to(device)).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
-        # print('Action probabilities', values)
         if training:
             policy_choice = np.random.choice(len(action_space), p=values)
         else:
@@ -173,11 +172,11 @@ class Wordle_RL:
         env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
         new_state, action_space, _ = env.reset()
         for turn_no in range(MAX_TURNS):
+            print(f'turn {turn_no + 1}: ')
             action, word = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
             true_reward = reward - self.config.train.rho * turn_no
-            print(f'turn {turn_no + 1}: ')
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {true_reward}')
             turn_encoding = torch.tensor([0] * MAX_TURNS)
