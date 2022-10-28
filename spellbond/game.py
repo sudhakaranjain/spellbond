@@ -33,43 +33,56 @@ class Wordle_RL:
         self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr)
         self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr)
 
-    def train_critic(self, state, next_state, reward, done, turn_no):
+    def train_critic(self, replay_buffer):
         with torch.no_grad():
             self.critic.eval()
-            if done:
-                target_q = torch.tensor([[reward]])
-            else:
-                next_turn_encoding = torch.tensor([0] * MAX_TURNS)
-                next_turn_encoding[turn_no + 1] = 1
-                next_state = torch.cat((torch.tensor(next_state).view(-1, ),
-                                        next_turn_encoding)).to(device).unsqueeze(dim=0)
-                target_q = reward + self.config.train.gamma * self.critic(next_state)
+            target_q = []
+            inp = []
+            for state, _, next_state, reward, done, turn_no in replay_buffer:
+                if done:
+                    target_q.append(torch.tensor([reward]).to(device))
+                else:
+                    next_turn_encoding = torch.tensor([0] * MAX_TURNS)
+                    next_turn_encoding[turn_no + 1] = 1
+                    next_state = torch.cat((torch.tensor(next_state).view(-1, ),
+                                            next_turn_encoding)).to(device).unsqueeze(dim=0)
+                    target_q.append(reward + self.config.train.gamma * self.critic(next_state)[0])
+                turn_encoding = torch.tensor([0] * MAX_TURNS)
+                turn_encoding[turn_no] = 1
+                inp.append(torch.cat((torch.tensor(state).view(-1, ), turn_encoding)).to(device))
 
         self.critic.train()
-        turn_encoding = torch.tensor([0] * MAX_TURNS)
-        turn_encoding[turn_no] = 1
-        state = torch.cat((torch.tensor(state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
+        inp = torch.stack(inp).to(device)
+        target_q = torch.stack(target_q).to(device)
         for _ in range(self.epochs):
             self.optim_critic.zero_grad()
-            predicted_q = self.critic(state)
-            loss = self.smooth_l1loss(predicted_q, target_q.to(device))
+            predicted_q = self.critic(inp)
+            loss = self.smooth_l1loss(predicted_q, target_q)
             loss.backward()
             self.optim_critic.step()
 
-    def train_actor(self, state, next_state, reward, done, turn_no, target_action):
-        tde = self.compute_TDE(state, next_state, reward, done, turn_no)
-        if tde > 0.0:
+    def train_actor(self, replay_buffer):
+        inp = []
+        target_action = []
+        with torch.no_grad():
+            for state, action, next_state, reward, done, turn_no in replay_buffer:
+                tde = self.compute_TDE(state, next_state, reward, done, turn_no)
+                if tde > 0.0:
+                    inp.append(torch.tensor(state).view(-1, ).to(device))
+                    target_action.append(torch.tensor(action).view(-1, ).to(device))
+        if inp:
             self.actor.train()
-            state = torch.tensor(state).view(-1, ).to(device).unsqueeze(dim=0)
-            target_action = torch.tensor(target_action).view(-1, ).to(device).unsqueeze(dim=0)
+            inp = torch.stack(inp).to(device)
+            target_action = torch.stack(target_action).to(device)
             for _ in range(self.epochs):
                 self.optim_actor.zero_grad()
-                action = self.actor(state)
-                loss = self.smooth_l1loss(action, target_action) + (1 - self.cos(action, target_action))
+                predicted_action = self.actor(inp)
+                loss = self.smooth_l1loss(predicted_action, target_action) + \
+                       (1 - self.cos(predicted_action, target_action)).mean()
                 loss.backward()
                 self.optim_actor.step()
 
-    def compute_TDE(self, state, next_state, reward, done, turn_no, ):
+    def compute_TDE(self, state, next_state, reward, done, turn_no):
         with torch.no_grad():
             if done:
                 target_q = torch.tensor([[reward]])
@@ -109,17 +122,17 @@ class Wordle_RL:
                 # Create the gym env and reset the state
                 env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
                 new_state, action_space, _ = env.reset()
+                replay_buffer = list()
                 for turn_no in range(MAX_TURNS):
                     action, word = self.predict_action(new_state, action_space, env.words, True)
                     # LOGGER.info(f"Guessed word: {word}")
                     current_state = copy.deepcopy(new_state)
+                    current_action = copy.deepcopy(action)
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     # True reward calculated based on number of guesses used
                     true_reward = reward - self.config.train.rho * turn_no
-
-                    self.train_critic(current_state, new_state, true_reward, done, turn_no)
-                    self.train_actor(current_state, new_state, true_reward, done, turn_no, action)
+                    replay_buffer.append((current_state, current_action, new_state, true_reward, done, turn_no))
 
                     if done:
                         # If a reward is given, the correct word was guessed
@@ -133,6 +146,9 @@ class Wordle_RL:
                             #     f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
                             # )
                             accuracy_buffer[buffer_idx] = 0
+
+                        self.train_critic(replay_buffer)
+                        self.train_actor(replay_buffer)
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
@@ -159,7 +175,7 @@ class Wordle_RL:
             new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
             true_reward = reward - self.config.train.rho * turn_no
-            print(f'turn {turn_no+1}: ')
+            print(f'turn {turn_no + 1}: ')
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {true_reward}')
             turn_encoding = torch.tensor([0] * MAX_TURNS)

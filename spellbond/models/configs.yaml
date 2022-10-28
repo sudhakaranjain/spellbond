@@ -3,7 +3,7 @@ model:
 train:
   gamma: 0.10
   rho: 0.2
-  epochs: 5
+  epochs: 10
   checkpoint_path: '../saved_models/'
 optimizer:
   lr: 1e-3
