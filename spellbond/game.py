@@ -138,6 +138,8 @@ class Wordle_RL:
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 if epoch % 100000 == 0:
                     print(f"Completed {epoch} epochs")
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 buffer_idx += 1 if buffer_idx < 99 else 0
                 epoch += 1
 
@@ -152,8 +154,6 @@ class Wordle_RL:
         for turn_no in range(MAX_TURNS):
             action, word = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
-            if done:
-                break
             action_space = info['action_space']
             true_reward = reward - self.config.train.rho * turn_no
             print(f'turn {turn_no+1}: ')
@@ -164,3 +164,5 @@ class Wordle_RL:
             torch_state = torch.cat((torch.tensor(new_state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
             with torch.no_grad():
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
+            if done:
+                break
