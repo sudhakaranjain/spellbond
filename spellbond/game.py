@@ -83,6 +83,7 @@ class Wordle_RL:
                 self.optim_actor.step()
 
     def compute_TDE(self, state, next_state, reward, done, turn_no):
+        self.critic.eval()
         with torch.no_grad():
             if done:
                 target_q = torch.tensor([[reward]])
@@ -106,6 +107,7 @@ class Wordle_RL:
             self.actor.eval()
             predicted_action = self.actor(torch.tensor(state).view(-1, ).unsqueeze(dim=0).to(device)).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
+        # print('Action probabilities', values)
         if training:
             policy_choice = np.random.choice(len(action_space), p=values)
         else:
@@ -147,15 +149,15 @@ class Wordle_RL:
                             # )
                             accuracy_buffer[buffer_idx] = 0
 
-                        self.train_critic(replay_buffer)
                         self.train_actor(replay_buffer)
+                        self.train_critic(replay_buffer)
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
-                if epoch % 100000 == 0:
+                if epoch % 50000 == 0:
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
