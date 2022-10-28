@@ -1,3 +1,4 @@
+import copy
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -67,9 +68,10 @@ class WordleEnvBase(gym.Env):
                 "should always call 'reset()' once you receive 'done = "
                 "True' -- any further steps are undefined behavior."
             )
+        self.old_state = copy.deepcopy(self.state)
         self.state = update_state(predicted_word, self.state, self.goal_action)
         self.action_spaces, self.words = update_action_space(self.state, self.action_spaces, self.words)
-        reward = compute_reward(self.state)
+        reward = compute_reward(self.old_state, self.state)
         self.remaining_steps -= 1
 
         if predicted_word == self.goal_word or self.remaining_steps == 0:

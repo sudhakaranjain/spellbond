@@ -53,11 +53,12 @@ def update_state(predicted_word, state, goal_action):
     return state
 
 
-def compute_reward(state):
+def compute_reward(old_state, state):
     reward = 0
     for char_idx in range(WORDLE_N):
         for alpha_idx in ALPHABETS.values():
-            if state[alpha_idx, char_idx, POSSIBILITIES['YES']]:
+            if state[alpha_idx, char_idx, POSSIBILITIES['YES']] > \
+                    old_state[alpha_idx, char_idx, POSSIBILITIES['YES']]:
                 reward += 1
                 break
     return reward

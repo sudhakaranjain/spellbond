@@ -9,4 +9,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = omegaconf.OmegaConf.load('../spellbond/models/configs.yaml')
     game = Wordle_RL(args, config)
-    game.train()
+    # game.train()
+    game.play()

@@ -16,6 +16,11 @@ logging.basicConfig(level=logging.INFO)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+def load_models(model_path):
+    state_dict = torch.load(model_path, map_location=torch.device(device))
+    return state_dict['actor'], state_dict['critic']
+
+
 class Wordle_RL:
     def __init__(self, arg, config):
         self.cos = nn.CosineSimilarity(dim=1)
@@ -135,3 +140,27 @@ class Wordle_RL:
                     print(f"Completed {epoch} epochs")
                 buffer_idx += 1 if buffer_idx < 99 else 0
                 epoch += 1
+
+    def play(self):
+        actor_weights, critic_weights = load_models(os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+        self.critic.load_state_dict(critic_weights)
+        self.critic.eval().to(device)
+        self.actor.load_state_dict(actor_weights)
+        self.actor.eval().to(device)
+        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
+        new_state, action_space, _ = env.reset()
+        for turn_no in range(MAX_TURNS):
+            action, word = self.predict_action(new_state, action_space, env.words, False)
+            new_state, reward, done, _, info = env.step(word)
+            if done:
+                break
+            action_space = info['action_space']
+            true_reward = reward - self.config.train.rho * turn_no
+            print(f'turn {turn_no+1}: ')
+            print(f'Predicted word: {word}, goal word: {env.goal_word}')
+            print(f'True reward: {true_reward}')
+            turn_encoding = torch.tensor([0] * MAX_TURNS)
+            turn_encoding[turn_no] = 1
+            torch_state = torch.cat((torch.tensor(new_state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
+            with torch.no_grad():
+                print(f'Critic Prediction: {self.critic(torch_state)} \n')
