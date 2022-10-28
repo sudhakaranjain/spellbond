@@ -136,7 +136,7 @@ class Wordle_RL:
 
                     if done:
                         # If a reward is given, the correct word was guessed
-                        if reward == 5:
+                        if word == env.goal_word:
                             # LOGGER.info(
                             #     f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
                             # )
