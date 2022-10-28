@@ -27,6 +27,7 @@ class Wordle_RL:
         self.arg = arg
         self.smooth_l1loss = nn.SmoothL1Loss()
         self.config = config
+        self.epochs = self.config.train.epochs
         self.actor = Actor(self.config).to(device)
         self.critic = Critic(self.config).to(device)
         self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr)
@@ -48,11 +49,12 @@ class Wordle_RL:
         turn_encoding = torch.tensor([0] * MAX_TURNS)
         turn_encoding[turn_no] = 1
         state = torch.cat((torch.tensor(state).view(-1, ), turn_encoding)).to(device).unsqueeze(dim=0)
-        self.optim_critic.zero_grad()
-        predicted_q = self.critic(state)
-        loss = self.smooth_l1loss(predicted_q, target_q.to(device))
-        loss.backward()
-        self.optim_critic.step()
+        for _ in range(self.epochs):
+            self.optim_critic.zero_grad()
+            predicted_q = self.critic(state)
+            loss = self.smooth_l1loss(predicted_q, target_q.to(device))
+            loss.backward()
+            self.optim_critic.step()
 
     def train_actor(self, state, next_state, reward, done, turn_no, target_action):
         tde = self.compute_TDE(state, next_state, reward, done, turn_no)
@@ -60,11 +62,12 @@ class Wordle_RL:
             self.actor.train()
             state = torch.tensor(state).view(-1, ).to(device).unsqueeze(dim=0)
             target_action = torch.tensor(target_action).view(-1, ).to(device).unsqueeze(dim=0)
-            self.optim_actor.zero_grad()
-            action = self.actor(state)
-            loss = self.smooth_l1loss(action, target_action) + (1 - self.cos(action, target_action))
-            loss.backward()
-            self.optim_actor.step()
+            for _ in range(self.epochs):
+                self.optim_actor.zero_grad()
+                action = self.actor(state)
+                loss = self.smooth_l1loss(action, target_action) + (1 - self.cos(action, target_action))
+                loss.backward()
+                self.optim_actor.step()
 
     def compute_TDE(self, state, next_state, reward, done, turn_no, ):
         with torch.no_grad():
