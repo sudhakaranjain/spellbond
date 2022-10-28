@@ -25,7 +25,7 @@ class Wordle_RL:
     def __init__(self, arg, config):
         self.cos = nn.CosineSimilarity(dim=1)
         self.arg = arg
-        self.smooth_l1loss = nn.SmoothL1Loss()
+        self.mse = nn.MSELoss()
         self.config = config
         self.epochs = self.config.train.epochs
         self.actor = Actor(self.config).to(device)
@@ -57,7 +57,7 @@ class Wordle_RL:
         for _ in range(self.epochs):
             self.optim_critic.zero_grad()
             predicted_q = self.critic(inp)
-            loss = self.smooth_l1loss(predicted_q, target_q)
+            loss = self.mse(predicted_q, target_q)
             loss.backward()
             self.optim_critic.step()
 
@@ -77,7 +77,7 @@ class Wordle_RL:
             for _ in range(self.epochs):
                 self.optim_actor.zero_grad()
                 predicted_action = self.actor(inp)
-                loss = self.smooth_l1loss(predicted_action, target_action) + \
+                loss = self.mse(predicted_action, target_action) + \
                        (1 - self.cos(predicted_action, target_action)).mean()
                 loss.backward()
                 self.optim_actor.step()
@@ -156,7 +156,7 @@ class Wordle_RL:
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 if epoch % 100000 == 0:
-                    print(f"Completed {epoch} epochs")
+                    print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 buffer_idx += 1 if buffer_idx < 99 else 0
