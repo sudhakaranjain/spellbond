@@ -28,6 +28,7 @@ class Wordle_RL:
         self.mse = nn.MSELoss()
         self.config = config
         self.epochs = self.config.train.epochs
+        self.batch_size = self.config.train.batch_size
         self.actor = Actor(self.config).to(device)
         self.critic = Critic(self.config).to(device)
         self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr)
@@ -135,6 +136,11 @@ class Wordle_RL:
                     true_reward = reward - self.config.train.rho * turn_no
                     replay_buffer.append((current_state, current_action, new_state, true_reward, done, turn_no))
 
+                    if len(replay_buffer) >= self.batch_size:
+                        self.train_actor(replay_buffer)
+                        self.train_critic(replay_buffer)
+                        replay_buffer = list()
+
                     if done:
                         # If a reward is given, the correct word was guessed
                         if word == env.goal_word:
@@ -147,9 +153,6 @@ class Wordle_RL:
                             #     f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
                             # )
                             accuracy_buffer[buffer_idx] = 0
-
-                        self.train_actor(replay_buffer)
-                        self.train_critic(replay_buffer)
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
@@ -164,7 +167,7 @@ class Wordle_RL:
                 epoch += 1
 
     def play(self):
-        actor_weights, critic_weights = load_models(os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+        actor_weights, critic_weights = load_models(os.path.join(self.config.train.checkpoint_path, 'models_500k.pth'))
         self.critic.load_state_dict(critic_weights)
         self.critic.eval().to(device)
         self.actor.load_state_dict(actor_weights)
