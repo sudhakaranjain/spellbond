@@ -120,11 +120,11 @@ class Wordle_RL:
         prev_accuracy = 0
         epoch = 0
         with tqdm(total=100) as pbar:
+            replay_buffer = list()
             while sum(accuracy_buffer) < 90:
                 # Create the gym env and reset the state
                 env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
                 new_state, action_space, _ = env.reset()
-                replay_buffer = list()
                 for turn_no in range(MAX_TURNS):
                     action, word = self.predict_action(new_state, action_space, env.words, True)
                     # LOGGER.info(f"Guessed word: {word}")
