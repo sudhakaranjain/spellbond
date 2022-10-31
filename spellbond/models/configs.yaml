@@ -2,9 +2,9 @@ model:
   dropout: 0.10
 train:
   gamma: 0.8333
-  rho: 0.2
+  rho: 0.1
   epochs: 50
   batch_size: 32
   checkpoint_path: '../saved_models/'
 optimizer:
-  lr: 1e-4
+  lr: 1e-3

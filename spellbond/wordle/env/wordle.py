@@ -45,6 +45,7 @@ class WordleEnvBase(gym.Env):
 
         # Initialize the action and state space. In this case, they are the same, as the agent can observe every word.
         self.action_spaces = None
+        self.old_state = None
         self.state = None
         self.action_space = spaces.Discrete(len(self.words))
         self.observation_space = spaces.Discrete(len(self.words))
@@ -69,7 +70,7 @@ class WordleEnvBase(gym.Env):
                 "True' -- any further steps are undefined behavior."
             )
         self.old_state = copy.deepcopy(self.state)
-        self.state = update_state(predicted_word, self.state, self.goal_action)
+        self.state = update_state(predicted_word, self.goal_word, self.state, self.goal_action)
         self.action_spaces, self.words = update_action_space(self.state, self.action_spaces, self.words)
         reward = compute_reward(self.old_state, self.state)
         self.remaining_steps -= 1

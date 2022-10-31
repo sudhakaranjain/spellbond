@@ -7,7 +7,7 @@ from spellbond.wordle.env.const import WORDLE_N, MAX_TURNS, ALPHABETS, POSSIBILI
 class Actor(nn.Module):
     def __init__(self, config):
         super(Actor, self).__init__()
-        self.fc1 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS),
+        self.fc1 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) + len(ALPHABETS),
                              WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2)
         self.fc2 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2,
                              WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 4)
@@ -31,7 +31,7 @@ class Actor(nn.Module):
 class Critic(nn.Module):
     def __init__(self, config):
         super(Critic, self).__init__()
-        self.fc1 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) + MAX_TURNS,
+        self.fc1 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) + len(ALPHABETS) + MAX_TURNS,
                              WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2)
         self.fc2 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2,
                              WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 4)
