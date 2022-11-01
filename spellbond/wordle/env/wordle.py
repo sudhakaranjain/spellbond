@@ -1,3 +1,4 @@
+import copy
 import os
 from typing import Dict, List, Optional, Tuple
 
@@ -5,8 +6,8 @@ import gym
 import numpy as np
 from gym import spaces
 
-from wordle.env import state
-from wordle.env.const import REWARD, WORDLE_N
+from spellbond.wordle.env.const import WORDLE_N, MAX_TURNS
+from spellbond.wordle.env.functions import initialize_env, update_action_space, update_state, compute_reward
 
 dirname = os.path.dirname(__file__)
 WORDS_PATH = f"{dirname}/../../data/wordle_words.txt"
@@ -30,7 +31,7 @@ def _load_words(limit: Optional[int] = None) -> List[str]:
 class WordleEnvBase(gym.Env):
     def __init__(self, words: List[str], max_turns: int) -> None:
         """
-        A Wordle envrionment compatible with gym Env.
+        A Wordle environment compatible with gym Env.
 
         :param words: The list of words to use for the game.
         :param max_turns: The maximum number of turns to use for the game.
@@ -42,24 +43,24 @@ class WordleEnvBase(gym.Env):
         self.words = words
         self.max_turns = max_turns
 
-        # Initalize the action and observation space. In this case, they are the same, as the agent can observe every word.
+        # Initialize the action and state space. In this case, they are the same, as the agent can observe every word.
+        self.action_spaces = None
+        self.old_state = None
+        self.state = None
         self.action_space = spaces.Discrete(len(self.words))
         self.observation_space = spaces.Discrete(len(self.words))
 
         self.done = True
-        self.goal_word: int = -1
-
-        self.state: state.WordleState = None
-        self.state_updater = state.update
+        self.goal_word: str = ""
+        self.goal_action: list = []
 
         self.remaining_steps = max_turns
 
-    def step(self, action: int) -> Tuple[state.WordleState, int, bool, Dict, Dict]:
+    def step(self, predicted_word: str) -> Tuple[np.ndarray, int, bool, Dict, Dict]:
         """
         Implementation of the step function.
 
-        :param action: The chosen action.
-        :return: The (limitted) vocabulary.
+        :param predicted_word: Word predicted by actor model
         """
         if self.done:
             raise ValueError(
@@ -68,49 +69,49 @@ class WordleEnvBase(gym.Env):
                 "should always call 'reset()' once you receive 'done = "
                 "True' -- any further steps are undefined behavior."
             )
-        self.state = self.state_updater(state=self.state, word=action)
-
-        reward = 0
+        self.old_state = copy.deepcopy(self.state)
+        self.state = update_state(predicted_word, self.goal_word, self.state, self.goal_action)
+        self.action_spaces, self.words = update_action_space(self.state, self.action_spaces, self.words)
+        reward = compute_reward(self.old_state, self.state)
         self.remaining_steps -= 1
 
-        if action == self.goal_word:
-            self.done = True
-            reward = REWARD
-
-        elif self.remaining_steps == 0:
-
+        if predicted_word == self.goal_word or self.remaining_steps == 0:
             self.done = True
 
         return (
-            self.state.copy(),
+            self.state,
             reward,
             self.done,
-            {"goal_id": self.goal_word},
-            {"info": ""},
+            {"aux": ""},
+            {"action_space": self.action_spaces},
         )
 
-    def reset(self) -> state.WordleState:
+    def reset(self) -> Tuple[np.ndarray, np.ndarray, Dict]:
         """
-        Implementation of the reset function.
+        Reset the whole environment.
         """
-        self.state = state.new(n_words=len(self.words))
         self.remaining_steps = self.max_turns
         self.done = False
-        self.goal_word = int(np.random.random() * len(self.words))
+        self.goal_word, self.goal_action, self.action_spaces, self.state = initialize_env(words=self.words)
 
-        return self.state.copy()
+        return self.state, self.action_spaces, {}
 
 
 class WordleEnv10(WordleEnvBase):
     def __init__(self):
-        super().__init__(words=_load_words(10), max_turns=6)
+        super().__init__(words=_load_words(10), max_turns=MAX_TURNS)
+
+
+class WordleEnv(WordleEnvBase):
+    def __init__(self, vocab_size):
+        super().__init__(words=_load_words(vocab_size), max_turns=MAX_TURNS)
 
 
 class WordleEnv100(WordleEnvBase):
     def __init__(self):
-        super().__init__(words=_load_words(100), max_turns=6)
+        super().__init__(words=_load_words(100), max_turns=MAX_TURNS)
 
 
 class WordleEnvFull(WordleEnvBase):
     def __init__(self):
-        super().__init__(words=_load_words(), max_turns=6)
+        super().__init__(words=_load_words(), max_turns=MAX_TURNS)
