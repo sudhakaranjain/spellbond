@@ -150,16 +150,9 @@ class Wordle_RL:
                         replay_buffer = list()
 
                     if done:
-                        # If a reward is given, the correct word was guessed
                         if word == env.goal_word:
-                            # LOGGER.info(
-                            #     f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
-                            # )
                             accuracy_buffer[buffer_idx] = 1
                         else:
-                            # LOGGER.info(
-                            #     f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
-                            # )
                             accuracy_buffer[buffer_idx] = 0
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
@@ -214,10 +207,9 @@ class SARSA:
         self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor)
         self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic)
 
-    def train_critic(self, replay_buffer):
+    def train_critic(self, replay_buffer, next_action_space):
         with torch.no_grad():
             self.critic.eval()
-            self.actor.eval()
             target_q = []
             states_actions = []
             for state, action, next_state, reward, done, turn_no in replay_buffer:
@@ -228,9 +220,9 @@ class SARSA:
                 else:
                     next_state = torch.cat((torch.tensor(next_state).view(-1, ),
                                             torch.tensor(next_hint).view(-1, ))).to(device).unsqueeze(dim=0)
-                    next_action = self.actor(next_state)
+                    next_action = self.predict_action((state, hint), next_action_space)
                     next_state_action = torch.cat((next_state.view(-1, ),
-                                                   next_action.view(-1, ))).to(device).unsqueeze(dim=0)
+                                                   torch.tensor(next_action).view(-1, ))).to(device).unsqueeze(dim=0)
                     target_q.append(reward + self.config.train.gamma * self.critic(next_state_action)[0])
                 states_actions.append(torch.cat((torch.tensor(state).view(-1, ),
                                       torch.tensor(hint).view(-1, ), torch.tensor(action).view(-1, ))).to(device))
@@ -245,7 +237,7 @@ class SARSA:
             loss.backward()
             self.optim_critic.step()
 
-    def train_actor(self, replay_buffer, action_space):
+    def train_actor(self, replay_buffer, current_action_space):
         states = []
         target_actions = []
         self.critic.eval()
@@ -254,10 +246,10 @@ class SARSA:
                 state, hint = state
                 states.append(torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).to(device))
                 states_actions = [torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
-                                             torch.tensor(action).view(-1, ))).to(device) for action in action_space]
+                                  torch.tensor(action).view(-1, ))).to(device) for action in current_action_space]
                 states_actions = torch.stack(states_actions).to(device)
                 max_q_index = np.argmax(self.critic(states_actions).cpu().numpy())
-                target_actions.append(torch.tensor(action_space[max_q_index]).view(-1, ))
+                target_actions.append(torch.tensor(current_action_space[max_q_index]).view(-1, ))
         self.actor.train()
         states = torch.stack(states).to(device)
         target_actions = torch.stack(target_actions).to(device)
@@ -266,10 +258,11 @@ class SARSA:
             predicted_actions = self.actor(states)
             loss = self.mse(predicted_actions, target_actions) + \
                        (1 - self.cos(predicted_actions, target_actions).mean())
+            print(loss)
             loss.backward()
             self.optim_actor.step()
 
-    def predict_action(self, state, action_space, words, training=True):
+    def predict_action(self, state, action_space, words=None, training=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
         state, hint = state
@@ -282,7 +275,11 @@ class SARSA:
             policy_choice = np.random.choice(len(action_space), p=values)
         else:
             policy_choice = np.argmax(values)
-        return action_space[policy_choice], words[policy_choice]
+
+        if words:
+            return action_space[policy_choice], words[policy_choice]
+        else:
+            return action_space[policy_choice]
 
     def train(self) -> None:
         accuracy_buffer = [0] * 100
@@ -300,26 +297,20 @@ class SARSA:
                     # LOGGER.info(f"Guessed word: {word}")
                     current_state = copy.deepcopy(new_state)
                     current_action = copy.deepcopy(action)
+                    current_action_space = copy.deepcopy(action_space)
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     replay_buffer.append((current_state, current_action, new_state, reward, done, turn_no))
 
                     if len(replay_buffer) >= self.batch_size:
-                        self.train_critic(replay_buffer)
-                        self.train_actor(replay_buffer, action_space)
+                        self.train_critic(replay_buffer, action_space)
+                        self.train_actor(replay_buffer, current_action_space)
                         replay_buffer = list()
 
                     if done:
-                        # If a reward is given, the correct word was guessed
                         if word == env.goal_word:
-                            # LOGGER.info(
-                            #     f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
-                            # )
                             accuracy_buffer[buffer_idx] = 1
                         else:
-                            # LOGGER.info(
-                            #     f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
-                            # )
                             accuracy_buffer[buffer_idx] = 0
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
@@ -345,7 +336,7 @@ class SARSA:
         new_state, action_space, _ = env.reset()
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
-            print(f'Word space: {env.words}')
+            # print(f'Word space: {env.words}')
             action, word = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             new_state_critic, hint = new_state
