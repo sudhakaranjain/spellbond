@@ -207,12 +207,12 @@ class SARSA:
         self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor)
         self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic)
 
-    def train_critic(self, replay_buffer, next_action_space):
+    def train_critic(self, replay_buffer):
         with torch.no_grad():
             self.critic.eval()
             target_q = []
             states_actions = []
-            for state, action, next_state, reward, done, turn_no in replay_buffer:
+            for state, action, _, next_state, next_action_space, reward, done in replay_buffer:
                 state, hint = state
                 next_state, next_hint = next_state
                 if done:
@@ -237,12 +237,12 @@ class SARSA:
             loss.backward()
             self.optim_critic.step()
 
-    def train_actor(self, replay_buffer, current_action_space):
+    def train_actor(self, replay_buffer):
         states = []
         target_actions = []
         self.critic.eval()
         with torch.no_grad():
-            for state, *_ in replay_buffer:
+            for state, _, current_action_space, *_ in replay_buffer:
                 state, hint = state
                 states.append(torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).to(device))
                 states_actions = [torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
@@ -258,6 +258,7 @@ class SARSA:
             predicted_actions = self.actor(states)
             loss = self.mse(predicted_actions, target_actions) + \
                        (1 - self.cos(predicted_actions, target_actions).mean())
+            print(loss)
             loss.backward()
             self.optim_actor.step()
 
@@ -270,6 +271,7 @@ class SARSA:
             self.actor.eval()
             predicted_action = self.actor(state).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
+        print('Probabilities: ', values)
         if training:
             policy_choice = np.random.choice(len(action_space), p=values)
         else:
@@ -299,11 +301,12 @@ class SARSA:
                     current_action_space = copy.deepcopy(action_space)
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
-                    replay_buffer.append((current_state, current_action, new_state, reward, done, turn_no))
+                    replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
+                                          reward, done))
 
                     if len(replay_buffer) >= self.batch_size:
-                        self.train_critic(replay_buffer, action_space)
-                        self.train_actor(replay_buffer, current_action_space)
+                        self.train_critic(replay_buffer)
+                        self.train_actor(replay_buffer)
                         replay_buffer = list()
 
                     if done:
