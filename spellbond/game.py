@@ -211,8 +211,8 @@ class SARSA:
         self.batch_size = self.config.train.batch_size
         self.actor = Actor_SARSA(self.config).to(device)
         self.critic = Critic_SARSA(self.config).to(device)
-        self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr)
-        self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr)
+        self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor)
+        self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic)
 
     def train_critic(self, replay_buffer):
         with torch.no_grad():
@@ -265,7 +265,7 @@ class SARSA:
             self.optim_actor.zero_grad()
             predicted_actions = self.actor(states)
             loss = self.mse(predicted_actions, target_actions) + \
-                   (1 - self.cos(predicted_actions, target_actions).mean())
+                       (1 - self.cos(predicted_actions, target_actions).mean())
             loss.backward()
             self.optim_actor.step()
 
@@ -336,7 +336,7 @@ class SARSA:
 
     def play(self):
         actor_weights, critic_weights = load_models(
-            os.path.join(self.config.train.checkpoint_path, 'models_1Kwords.pth'))
+            os.path.join(self.config.train.checkpoint_path, 'models.pth'))
         self.critic.load_state_dict(critic_weights)
         self.critic.eval().to(device)
         self.actor.load_state_dict(actor_weights)
@@ -345,16 +345,15 @@ class SARSA:
         new_state, action_space, _ = env.reset()
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
+            print(f'Word space: {env.words}')
             action, word = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             new_state_critic, hint = new_state
             action_space = info['action_space']
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {reward}')
-            turn_encoding = torch.tensor([0] * MAX_TURNS)
-            turn_encoding[turn_no] = 1
             torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
-                                     turn_encoding)).to(device).unsqueeze(dim=0)
+                                     torch.tensor(action).view(-1, ))).to(device).unsqueeze(dim=0)
             with torch.no_grad():
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
             if done:
