@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from spellbond import Wordle_RL
+from spellbond import Wordle_RL, SARSA
 import omegaconf
 
 if __name__ == "__main__":
@@ -8,6 +8,6 @@ if __name__ == "__main__":
     parser.add_argument("--vocab-size", type=int, default="1000", help="gym environment tag")
     args = parser.parse_args()
     config = omegaconf.OmegaConf.load('../spellbond/models/configs.yaml')
-    game = Wordle_RL(args, config)
+    game = SARSA(args, config)
     game.train()
     # game.play()

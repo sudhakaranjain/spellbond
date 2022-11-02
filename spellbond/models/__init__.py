@@ -1,1 +1,1 @@
-from spellbond.models.models import Actor, Critic
+from spellbond.models.models import *
