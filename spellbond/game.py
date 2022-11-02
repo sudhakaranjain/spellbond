@@ -219,7 +219,7 @@ class SARSA:
                     target_q.append(torch.tensor([reward]).to(device))
                 else:
                     next_state = torch.cat((torch.tensor(next_state).view(-1, ),
-                                            torch.tensor(next_hint).view(-1, ))).to(device).unsqueeze(dim=0)
+                                            torch.tensor(next_hint).view(-1, ))).unsqueeze(dim=0)
                     next_action = self.predict_action((state, hint), next_action_space)
                     next_state_action = torch.cat((next_state.view(-1, ),
                                                    torch.tensor(next_action).view(-1, ))).to(device).unsqueeze(dim=0)
@@ -258,7 +258,6 @@ class SARSA:
             predicted_actions = self.actor(states)
             loss = self.mse(predicted_actions, target_actions) + \
                        (1 - self.cos(predicted_actions, target_actions).mean())
-            print(loss)
             loss.backward()
             self.optim_actor.step()
 
