@@ -258,7 +258,6 @@ class SARSA:
             predicted_actions = self.actor(states)
             loss = self.mse(predicted_actions, target_actions) + \
                        (1 - self.cos(predicted_actions, target_actions).mean())
-            print(loss)
             loss.backward()
             self.optim_actor.step()
 
@@ -271,7 +270,6 @@ class SARSA:
             self.actor.eval()
             predicted_action = self.actor(state).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
-        print('Probabilities: ', values)
         if training:
             policy_choice = np.random.choice(len(action_space), p=values)
         else:

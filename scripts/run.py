@@ -9,5 +9,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = omegaconf.OmegaConf.load('../spellbond/models/configs.yaml')
     game = SARSA(args, config)
-    # game.train()
-    game.play()
+    game.train()
+    # game.play()
