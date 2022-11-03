@@ -178,8 +178,8 @@ class Wordle_RL:
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
             action, word = self.predict_action(new_state, action_space, env.words, False)
+            new_state_critic, hint = copy.deepcopy(new_state)
             new_state, reward, done, _, info = env.step(word)
-            new_state_critic, hint = new_state
             action_space = info['action_space']
             true_reward = reward - self.config.train.rho * turn_no
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
@@ -300,7 +300,7 @@ class SARSA:
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
-                                          reward, done))
+                                          reward/5, done))
 
                     if len(replay_buffer) >= self.batch_size:
                         self.train_critic(replay_buffer)
@@ -337,9 +337,9 @@ class SARSA:
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
             # print(f'Word space: {env.words}')
+            new_state_critic, hint = copy.deepcopy(new_state)
             action, word = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
-            new_state_critic, hint = new_state
             action_space = info['action_space']
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {reward}')

@@ -84,6 +84,7 @@ class Critic_SARSA(nn.Module):
                              WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2)
         self.fc3 = nn.Linear(WORDLE_N * len(POSSIBILITIES) * len(ALPHABETS) // 2, len(ALPHABETS) * WORDLE_N)
         self.fc4 = nn.Linear(len(ALPHABETS) * WORDLE_N, 1)
+        self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         x = self.fc1(x)
@@ -92,4 +93,5 @@ class Critic_SARSA(nn.Module):
         x = F.relu(x)
         x = self.fc3(x)
         x = F.relu(x)
-        return self.fc4(x)
+        x = self.fc4(x)
+        return self.sigmoid(x)

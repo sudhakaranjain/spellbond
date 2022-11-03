@@ -4,7 +4,7 @@ train:
   gamma: 0.8333
   rho: 0.1
   epochs: 50
-  batch_size: 32
+  batch_size: 16
   checkpoint_path: '../saved_models/'
 optimizer:
   lr_critic: 1e-4
