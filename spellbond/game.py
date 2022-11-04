@@ -282,6 +282,7 @@ class SARSA:
 
     def train(self) -> None:
         accuracy_buffer = [0] * 100
+        turn_buffer = [6] * 100
         buffer_idx = 0
         prev_accuracy = 0
         epoch = 0
@@ -312,6 +313,7 @@ class SARSA:
                             accuracy_buffer[buffer_idx] = 1
                         else:
                             accuracy_buffer[buffer_idx] = 0
+                        turn_buffer[buffer_idx] = turn_no + 1
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
@@ -319,7 +321,8 @@ class SARSA:
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 if epoch % 50000 == 0:
-                    print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}")
+                    print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                          f"Average turns: {sum(turn_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
                 buffer_idx += 1 if buffer_idx < 99 else 0
