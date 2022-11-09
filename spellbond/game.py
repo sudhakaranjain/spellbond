@@ -276,7 +276,7 @@ class SARSA:
             policy_choice = np.argmax(values)
 
         if words:
-            return action_space[policy_choice], words[policy_choice]
+            return action_space[policy_choice], words[policy_choice], values
         else:
             return action_space[policy_choice]
 
@@ -293,7 +293,7 @@ class SARSA:
                 env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
                 new_state, action_space, _ = env.reset()
                 for turn_no in range(MAX_TURNS):
-                    action, word = self.predict_action(new_state, action_space, env.words, True)
+                    action, word, prob = self.predict_action(new_state, action_space, env.words, True)
                     # LOGGER.info(f"Guessed word: {word}")
                     current_state = copy.deepcopy(new_state)
                     current_action = copy.deepcopy(action)
@@ -320,7 +320,7 @@ class SARSA:
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
-                if epoch % 50000 == 0:
+                if epoch % 10000 == 0:
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
@@ -341,9 +341,10 @@ class SARSA:
             print(f'turn {turn_no + 1}: ')
             # print(f'Word space: {env.words}')
             new_state_critic, hint = copy.deepcopy(new_state)
-            action, word = self.predict_action(new_state, action_space, env.words, False)
+            action, word, prob = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
+            print(f'Probabilities: ', prob)
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {reward}')
             torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
