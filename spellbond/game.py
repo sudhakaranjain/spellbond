@@ -256,8 +256,7 @@ class SARSA:
         for _ in range(self.epochs):
             self.optim_actor.zero_grad()
             predicted_actions = self.actor(states)
-            loss = self.mse(predicted_actions, target_actions) + \
-                       (1 - self.cos(predicted_actions, target_actions).mean())
+            loss = self.mse(predicted_actions, target_actions)
             loss.backward()
             self.optim_actor.step()
 
@@ -270,10 +269,10 @@ class SARSA:
             self.actor.eval()
             predicted_action = self.actor(state).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
-        if training:
-            policy_choice = np.random.choice(len(action_space), p=values)
-        else:
-            policy_choice = np.argmax(values)
+        # if training:
+        #     policy_choice = np.random.choice(len(action_space), p=values)
+        # else:
+        policy_choice = np.argmax(values)
 
         if words:
             return action_space[policy_choice], words[policy_choice], values
@@ -301,7 +300,7 @@ class SARSA:
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
-                                          reward/5, done))
+                                          reward/5 - self.config.train.rho * turn_no, done))
 
                     if len(replay_buffer) >= self.batch_size:
                         self.train_critic(replay_buffer)
