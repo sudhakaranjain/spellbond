@@ -218,9 +218,9 @@ class SARSA:
                 if done:
                     target_q.append(torch.tensor([reward]).to(device))
                 else:
+                    next_action = self.predict_action((next_state, next_hint), next_action_space, None, False)
                     next_state = torch.cat((torch.tensor(next_state).view(-1, ),
                                             torch.tensor(next_hint).view(-1, ))).unsqueeze(dim=0)
-                    next_action = self.predict_action((state, hint), next_action_space)
                     next_state_action = torch.cat((next_state.view(-1, ),
                                                    torch.tensor(next_action).view(-1, ))).to(device).unsqueeze(dim=0)
                     target_q.append(reward + self.config.train.gamma * self.critic(next_state_action)[0])
@@ -260,7 +260,7 @@ class SARSA:
             loss.backward()
             self.optim_actor.step()
 
-    def predict_action(self, state, action_space, words=None, training=True):
+    def predict_action(self, state, action_space, words=None, on_policy=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
         state, hint = state
@@ -269,10 +269,10 @@ class SARSA:
             self.actor.eval()
             predicted_action = self.actor(state).cpu().numpy()[0]
         values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
-        # if training:
-        #     policy_choice = np.random.choice(len(action_space), p=values)
-        # else:
-        policy_choice = np.argmax(values)
+        if on_policy:
+            policy_choice = np.random.choice(len(action_space), p=values)
+        else:
+            policy_choice = np.argmax(values)
 
         if words:
             return action_space[policy_choice], words[policy_choice], values
@@ -281,13 +281,13 @@ class SARSA:
 
     def train(self) -> None:
         accuracy_buffer = [0] * 100
-        turn_buffer = [6] * 100
+        turn_buffer = [MAX_TURNS] * 100
         buffer_idx = 0
         prev_accuracy = 0
         epoch = 0
         with tqdm(total=100) as pbar:
             replay_buffer = list()
-            while sum(accuracy_buffer) < 99:
+            while sum(accuracy_buffer) < 99 or sum(turn_buffer) / 100 >= 2:
                 # Create the gym env and reset the state
                 env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
                 new_state, action_space, _ = env.reset()
@@ -300,7 +300,7 @@ class SARSA:
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
-                                          reward/5 - self.config.train.rho * turn_no, done))
+                                          reward/5, done))
 
                     if len(replay_buffer) >= self.batch_size:
                         self.train_critic(replay_buffer)
@@ -319,13 +319,16 @@ class SARSA:
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
-                if epoch % 10000 == 0:
+                if epoch % 100 == 0:
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
-                buffer_idx += 1 if buffer_idx < 99 else 0
                 epoch += 1
+                buffer_idx = epoch % 100
+
+            print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                  f"Average turns: {sum(turn_buffer) / 100}")
 
     def play(self):
         actor_weights, critic_weights = load_models(
