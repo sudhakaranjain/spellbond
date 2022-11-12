@@ -319,7 +319,7 @@ class SARSA:
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path, 'models.pth'))
-                if epoch % 100 == 0:
+                if epoch % 10000 == 0:
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
