@@ -9,7 +9,7 @@ import torch.nn as nn
 from tqdm import tqdm
 
 from spellbond.models import Actor, Critic, Actor_SARSA, Critic_SARSA
-from spellbond.wordle.env.const import MAX_TURNS
+from spellbond.wordle.env.const import MAX_TURNS, ALPHABETS, WORDLE_N
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -279,6 +279,23 @@ class SARSA:
         else:
             return action_space[policy_choice]
 
+    def predict_raw_action(self, state, action_space, words=None, on_policy=True):
+        def softmax(x):
+            return np.exp(x) / np.exp(x).sum()
+        alphabets = list(ALPHABETS.keys())
+        state, hint = state
+        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).unsqueeze(dim=0).to(device)
+        with torch.no_grad():
+            self.actor.eval()
+            predicted_action = self.actor(state).cpu().numpy()[0]
+        word = [np.argmax(col) for col in predicted_action.reshape(len(ALPHABETS), WORDLE_N).T]
+        word = ''.join([alphabets[idx] for idx in word])
+        values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
+        if words:
+            return predicted_action, word, values
+        else:
+            return predicted_action
+
     def train(self) -> None:
         accuracy_buffer = [0] * 100
         turn_buffer = [MAX_TURNS] * 100
@@ -343,10 +360,10 @@ class SARSA:
             print(f'turn {turn_no + 1}: ')
             # print(f'Word space: {env.words}')
             new_state_critic, hint = copy.deepcopy(new_state)
-            action, word, prob = self.predict_action(new_state, action_space, env.words, False)
+            action, word, prob = self.predict_raw_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
-            print(f'Probabilities: ', prob)
+            # print(f'Probabilities: ', prob)
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {reward}')
             torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
