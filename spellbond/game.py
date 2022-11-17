@@ -212,20 +212,26 @@ class SARSA:
             self.critic.eval()
             target_q = []
             states_actions = []
-            for state, action, _, next_state, next_action_space, reward, done in replay_buffer:
+            for state, action, _, next_state, next_action_space, reward, done, turn_no in replay_buffer:
                 state, hint = state
                 next_state, next_hint = next_state
                 if done:
                     target_q.append(torch.tensor([reward]).to(device))
                 else:
-                    next_action = self.predict_action((next_state, next_hint), next_action_space, None, False)
+                    next_action = self.predict_action((next_state, next_hint), turn_no + 1, next_action_space,
+                                                      None, False)
                     next_state = torch.cat((torch.tensor(next_state).view(-1, ),
                                             torch.tensor(next_hint).view(-1, ))).unsqueeze(dim=0)
-                    next_state_action = torch.cat((next_state.view(-1, ),
+                    next_turn_encoding = torch.tensor([0] * MAX_TURNS)
+                    next_turn_encoding[turn_no + 1] = 1
+                    next_state_action = torch.cat((next_state.view(-1, ), next_turn_encoding,
                                                    torch.tensor(next_action).view(-1, ))).to(device).unsqueeze(dim=0)
                     target_q.append(reward + self.config.train.gamma * self.critic(next_state_action)[0])
+                turn_encoding = torch.tensor([0] * MAX_TURNS)
+                turn_encoding[turn_no] = 1
                 states_actions.append(torch.cat((torch.tensor(state).view(-1, ),
-                                      torch.tensor(hint).view(-1, ), torch.tensor(action).view(-1, ))).to(device))
+                                      torch.tensor(hint).view(-1, ), turn_encoding,
+                                      torch.tensor(action).view(-1, ))).to(device))
 
         self.critic.train()
         states_actions = torch.stack(states_actions).to(device)
@@ -242,10 +248,15 @@ class SARSA:
         target_actions = []
         self.critic.eval()
         with torch.no_grad():
-            for state, _, current_action_space, *_ in replay_buffer:
+            for state, _, current_action_space, *others in replay_buffer:
+                turn_no = others[-1]
+                turn_encoding = torch.tensor([0] * MAX_TURNS)
+                turn_encoding[turn_no] = 1
                 state, hint = state
-                states.append(torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).to(device))
+                states.append(torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
+                                         turn_encoding)).to(device))
                 states_actions = [torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
+                                  turn_encoding,
                                   torch.tensor(action).view(-1, ))).to(device) for action in current_action_space]
                 states_actions = torch.stack(states_actions).to(device)
                 max_q_index = np.argmax(self.critic(states_actions).cpu().numpy())
@@ -260,11 +271,14 @@ class SARSA:
             loss.backward()
             self.optim_actor.step()
 
-    def predict_action(self, state, action_space, words=None, on_policy=True):
+    def predict_action(self, state, turn_no, action_space, words=None, on_policy=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
         state, hint = state
-        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).unsqueeze(dim=0).to(device)
+        turn_encoding = torch.tensor([0] * MAX_TURNS)
+        turn_encoding[turn_no] = 1
+        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
+                           turn_encoding)).unsqueeze(dim=0).to(device)
         with torch.no_grad():
             self.actor.eval()
             predicted_action = self.actor(state).cpu().numpy()[0]
@@ -279,12 +293,15 @@ class SARSA:
         else:
             return action_space[policy_choice]
 
-    def predict_raw_action(self, state, action_space, words=None, on_policy=True):
+    def predict_raw_action(self, state, turn_no, action_space, words=None, on_policy=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
         alphabets = list(ALPHABETS.keys())
         state, hint = state
-        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).unsqueeze(dim=0).to(device)
+        turn_encoding = torch.tensor([0] * MAX_TURNS)
+        turn_encoding[turn_no] = 1
+        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
+                           turn_encoding)).unsqueeze(dim=0).to(device)
         with torch.no_grad():
             self.actor.eval()
             predicted_action = self.actor(state).cpu().numpy()[0]
@@ -309,7 +326,7 @@ class SARSA:
                 env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
                 new_state, action_space, _ = env.reset()
                 for turn_no in range(MAX_TURNS):
-                    action, word, prob = self.predict_action(new_state, action_space, env.words, True)
+                    action, word, prob = self.predict_action(new_state, turn_no, action_space, env.words, True)
                     # LOGGER.info(f"Guessed word: {word}")
                     current_state = copy.deepcopy(new_state)
                     current_action = copy.deepcopy(action)
@@ -317,7 +334,7 @@ class SARSA:
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
-                                          reward/5, done))
+                                          reward/5 - self.config.train.rho * turn_no, done, turn_no))
 
                     if len(replay_buffer) >= self.batch_size:
                         self.train_critic(replay_buffer)
@@ -360,7 +377,7 @@ class SARSA:
             print(f'turn {turn_no + 1}: ')
             # print(f'Word space: {env.words}')
             new_state_critic, hint = copy.deepcopy(new_state)
-            action, word, prob = self.predict_action(new_state, action_space, env.words, False)
+            action, word, prob = self.predict_action(new_state, turn_no, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
             # print(f'Probabilities: ', prob)

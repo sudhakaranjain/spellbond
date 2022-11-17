@@ -7,5 +7,5 @@ train:
   batch_size: 32
   checkpoint_path: '../saved_models/'
 optimizer:
-  lr_critic: 1e-5
-  lr_actor: 1e-5
+  lr_critic: 1e-4
+  lr_actor: 1e-4
