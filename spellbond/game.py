@@ -360,7 +360,7 @@ class SARSA:
             print(f'turn {turn_no + 1}: ')
             # print(f'Word space: {env.words}')
             new_state_critic, hint = copy.deepcopy(new_state)
-            action, word, prob = self.predict_raw_action(new_state, action_space, env.words, False)
+            action, word, prob = self.predict_action(new_state, action_space, env.words, False)
             new_state, reward, done, _, info = env.step(word)
             action_space = info['action_space']
             # print(f'Probabilities: ', prob)
