@@ -1,4 +1,4 @@
-from spellbond.game import Wordle_RL
+from spellbond.game import Wordle_RL, SARSA
 from gym.envs.registration import register
 
 

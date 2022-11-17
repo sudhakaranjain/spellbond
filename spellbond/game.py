@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 from tqdm import tqdm
 
-from spellbond.models import Actor, Critic
-from spellbond.wordle.env.const import MAX_TURNS
+from spellbond.models import Actor, Critic, Actor_SARSA, Critic_SARSA
+from spellbond.wordle.env.const import MAX_TURNS, ALPHABETS, WORDLE_N
 
 LOGGER = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -150,16 +150,9 @@ class Wordle_RL:
                         replay_buffer = list()
 
                     if done:
-                        # If a reward is given, the correct word was guessed
                         if word == env.goal_word:
-                            # LOGGER.info(
-                            #     f"You guessed the correct word on turn: {turn_no}. The word was {env.goal_word}"
-                            # )
                             accuracy_buffer[buffer_idx] = 1
                         else:
-                            # LOGGER.info(
-                            #     f"You did not guess the correct word in {MAX_TURNS} turns. The correct word was {env.goal_word}"
-                            # )
                             accuracy_buffer[buffer_idx] = 0
                         break
                 if sum(accuracy_buffer) > prev_accuracy:
@@ -185,8 +178,8 @@ class Wordle_RL:
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
             action, word = self.predict_action(new_state, action_space, env.words, False)
+            new_state_critic, hint = copy.deepcopy(new_state)
             new_state, reward, done, _, info = env.step(word)
-            new_state_critic, hint = new_state
             action_space = info['action_space']
             true_reward = reward - self.config.train.rho * turn_no
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
@@ -195,6 +188,186 @@ class Wordle_RL:
             turn_encoding[turn_no] = 1
             torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
                                      turn_encoding)).to(device).unsqueeze(dim=0)
+            with torch.no_grad():
+                print(f'Critic Prediction: {self.critic(torch_state)} \n')
+            if done:
+                break
+
+
+class SARSA:
+    def __init__(self, arg, config):
+        self.cos = nn.CosineSimilarity(dim=1)
+        self.arg = arg
+        self.mse = nn.MSELoss()
+        self.config = config
+        self.epochs = self.config.train.epochs
+        self.batch_size = self.config.train.batch_size
+        self.actor = Actor_SARSA(self.config).to(device)
+        self.critic = Critic_SARSA(self.config).to(device)
+        self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor)
+        self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic)
+
+    def train_critic(self, replay_buffer):
+        with torch.no_grad():
+            self.critic.eval()
+            target_q = []
+            states_actions = []
+            for state, action, _, next_state, next_action_space, reward, done in replay_buffer:
+                state, hint = state
+                next_state, next_hint = next_state
+                if done:
+                    target_q.append(torch.tensor([reward]).to(device))
+                else:
+                    next_action = self.predict_action((next_state, next_hint), next_action_space, None, False)
+                    next_state = torch.cat((torch.tensor(next_state).view(-1, ),
+                                            torch.tensor(next_hint).view(-1, ))).unsqueeze(dim=0)
+                    next_state_action = torch.cat((next_state.view(-1, ),
+                                                   torch.tensor(next_action).view(-1, ))).to(device).unsqueeze(dim=0)
+                    target_q.append(reward + self.config.train.gamma * self.critic(next_state_action)[0])
+                states_actions.append(torch.cat((torch.tensor(state).view(-1, ),
+                                      torch.tensor(hint).view(-1, ), torch.tensor(action).view(-1, ))).to(device))
+
+        self.critic.train()
+        states_actions = torch.stack(states_actions).to(device)
+        target_q = torch.stack(target_q).to(device)
+        for _ in range(self.epochs):
+            self.optim_critic.zero_grad()
+            predicted_q = self.critic(states_actions)
+            loss = self.mse(predicted_q, target_q)
+            loss.backward()
+            self.optim_critic.step()
+
+    def train_actor(self, replay_buffer):
+        states = []
+        target_actions = []
+        self.critic.eval()
+        with torch.no_grad():
+            for state, _, current_action_space, *_ in replay_buffer:
+                state, hint = state
+                states.append(torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).to(device))
+                states_actions = [torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
+                                  torch.tensor(action).view(-1, ))).to(device) for action in current_action_space]
+                states_actions = torch.stack(states_actions).to(device)
+                max_q_index = np.argmax(self.critic(states_actions).cpu().numpy())
+                target_actions.append(torch.tensor(current_action_space[max_q_index]).view(-1, ))
+        self.actor.train()
+        states = torch.stack(states).to(device)
+        target_actions = torch.stack(target_actions).to(device)
+        for _ in range(self.epochs):
+            self.optim_actor.zero_grad()
+            predicted_actions = self.actor(states)
+            loss = self.mse(predicted_actions, target_actions)
+            loss.backward()
+            self.optim_actor.step()
+
+    def predict_action(self, state, action_space, words=None, on_policy=True):
+        def softmax(x):
+            return np.exp(x) / np.exp(x).sum()
+        state, hint = state
+        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).unsqueeze(dim=0).to(device)
+        with torch.no_grad():
+            self.actor.eval()
+            predicted_action = self.actor(state).cpu().numpy()[0]
+        values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
+        if on_policy:
+            policy_choice = np.random.choice(len(action_space), p=values)
+        else:
+            policy_choice = np.argmax(values)
+
+        if words:
+            return action_space[policy_choice], words[policy_choice], values
+        else:
+            return action_space[policy_choice]
+
+    def predict_raw_action(self, state, action_space, words=None, on_policy=True):
+        def softmax(x):
+            return np.exp(x) / np.exp(x).sum()
+        alphabets = list(ALPHABETS.keys())
+        state, hint = state
+        state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).unsqueeze(dim=0).to(device)
+        with torch.no_grad():
+            self.actor.eval()
+            predicted_action = self.actor(state).cpu().numpy()[0]
+        word = [np.argmax(col) for col in predicted_action.reshape(len(ALPHABETS), WORDLE_N).T]
+        word = ''.join([alphabets[idx] for idx in word])
+        values = softmax(np.array([np.dot(predicted_action, action.reshape(-1, )) for action in action_space]))
+        if words:
+            return predicted_action, word, values
+        else:
+            return predicted_action
+
+    def train(self) -> None:
+        accuracy_buffer = [0] * 100
+        turn_buffer = [MAX_TURNS] * 100
+        buffer_idx = 0
+        prev_accuracy = 0
+        epoch = 0
+        with tqdm(total=100) as pbar:
+            replay_buffer = list()
+            while sum(accuracy_buffer) < 99 or sum(turn_buffer) / 100 >= 2:
+                # Create the gym env and reset the state
+                env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
+                new_state, action_space, _ = env.reset()
+                for turn_no in range(MAX_TURNS):
+                    action, word, prob = self.predict_action(new_state, action_space, env.words, True)
+                    # LOGGER.info(f"Guessed word: {word}")
+                    current_state = copy.deepcopy(new_state)
+                    current_action = copy.deepcopy(action)
+                    current_action_space = copy.deepcopy(action_space)
+                    new_state, reward, done, _, info = env.step(word)
+                    action_space = info['action_space']
+                    replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
+                                          reward/5, done))
+
+                    if len(replay_buffer) >= self.batch_size:
+                        self.train_critic(replay_buffer)
+                        self.train_actor(replay_buffer)
+                        replay_buffer = list()
+
+                    if done:
+                        if word == env.goal_word:
+                            accuracy_buffer[buffer_idx] = 1
+                        else:
+                            accuracy_buffer[buffer_idx] = 0
+                        turn_buffer[buffer_idx] = turn_no + 1
+                        break
+                if sum(accuracy_buffer) > prev_accuracy:
+                    pbar.update(sum(accuracy_buffer) - prev_accuracy)
+                    prev_accuracy = sum(accuracy_buffer)
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+                if epoch % 10000 == 0:
+                    print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                          f"Average turns: {sum(turn_buffer) / 100}")
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+                epoch += 1
+                buffer_idx = epoch % 100
+
+            print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                  f"Average turns: {sum(turn_buffer) / 100}")
+
+    def play(self):
+        actor_weights, critic_weights = load_models(
+            os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+        self.critic.load_state_dict(critic_weights)
+        self.critic.eval().to(device)
+        self.actor.load_state_dict(actor_weights)
+        self.actor.eval().to(device)
+        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
+        new_state, action_space, _ = env.reset()
+        for turn_no in range(MAX_TURNS):
+            print(f'turn {turn_no + 1}: ')
+            # print(f'Word space: {env.words}')
+            new_state_critic, hint = copy.deepcopy(new_state)
+            action, word, prob = self.predict_raw_action(new_state, action_space, env.words, False)
+            new_state, reward, done, _, info = env.step(word)
+            action_space = info['action_space']
+            # print(f'Probabilities: ', prob)
+            print(f'Predicted word: {word}, goal word: {env.goal_word}')
+            print(f'True reward: {reward}')
+            torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
+                                     torch.tensor(action).view(-1, ))).to(device).unsqueeze(dim=0)
             with torch.no_grad():
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
             if done:
