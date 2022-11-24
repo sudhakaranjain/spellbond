@@ -383,7 +383,10 @@ class SARSA:
             # print(f'Probabilities: ', prob)
             print(f'Predicted word: {word}, goal word: {env.goal_word}')
             print(f'True reward: {reward}')
+            turn_encoding = torch.tensor([0] * MAX_TURNS)
+            turn_encoding[turn_no] = 1
             torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
+                                     turn_encoding,
                                      torch.tensor(action).view(-1, ))).to(device).unsqueeze(dim=0)
             with torch.no_grad():
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
