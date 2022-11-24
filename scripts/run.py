@@ -11,3 +11,4 @@ if __name__ == "__main__":
     game = SARSA(args, config)
     game.train()
     # game.play()
+    # game.infer()

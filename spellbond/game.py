@@ -392,3 +392,31 @@ class SARSA:
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
             if done:
                 break
+
+    def infer(self, goal_word: str = 'grime', model_checkpoint: str = 'models.pth', max_num_turns: int = MAX_TURNS):
+        goal_word = goal_word.upper()
+        actor_weights, critic_weights = load_models(
+            os.path.join(self.config.train.checkpoint_path, model_checkpoint))
+        self.critic.load_state_dict(critic_weights)
+        self.critic.eval().to(device)
+        self.actor.load_state_dict(actor_weights)
+        self.actor.eval().to(device)
+        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size, goal_word=goal_word)
+        new_state, action_space, _ = env.reset()
+
+        for turn_no in range(max_num_turns):
+            new_state_critic, hint = copy.deepcopy(new_state)
+            action, word, prob = self.predict_action(new_state, turn_no, action_space, env.words, False)
+            new_state, reward, done, _, info = env.step(word)
+            action_space = info['action_space']
+            print(f"For turn {turn_no + 1} Predicted word: {word} Goal Word: {env.goal_word}")
+            print(f'True reward: {reward}')
+            turn_encoding = torch.tensor([0] * MAX_TURNS)
+            turn_encoding[turn_no] = 1
+            torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
+                                     turn_encoding,
+                                     torch.tensor(action).view(-1, ))).to(device).unsqueeze(dim=0)
+            with torch.no_grad():
+                print(f'Critic Prediction: {self.critic(torch_state)} \n')
+            if done:
+                break

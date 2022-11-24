@@ -29,7 +29,7 @@ def _load_words(limit: Optional[int] = None) -> List[str]:
 
 
 class WordleEnvBase(gym.Env):
-    def __init__(self, words: List[str], max_turns: int) -> None:
+    def __init__(self, words: List[str], max_turns: int, goal_word: str = None) -> None:
         """
         A Wordle environment compatible with gym Env.
 
@@ -42,6 +42,7 @@ class WordleEnvBase(gym.Env):
         ), f"Not all words of length {WORDLE_N}, {words}"
         self.words = words
         self.max_turns = max_turns
+        self.goal_word = goal_word
 
         # Initialize the action and state space. In this case, they are the same, as the agent can observe every word.
         self.action_spaces = None
@@ -51,8 +52,6 @@ class WordleEnvBase(gym.Env):
         self.observation_space = spaces.Discrete(len(self.words))
 
         self.done = True
-        self.goal_word: str = ""
-        self.goal_action: list = []
 
         self.remaining_steps = max_turns
 
@@ -92,7 +91,8 @@ class WordleEnvBase(gym.Env):
         """
         self.remaining_steps = self.max_turns
         self.done = False
-        self.goal_word, self.goal_action, self.action_spaces, self.state = initialize_env(words=self.words)
+        self.goal_word, self.goal_action, self.action_spaces, self.state = initialize_env(words=self.words,
+                                                                                          goal_word=self.goal_word)
 
         return self.state, self.action_spaces, {}
 
@@ -103,8 +103,8 @@ class WordleEnv10(WordleEnvBase):
 
 
 class WordleEnv(WordleEnvBase):
-    def __init__(self, vocab_size):
-        super().__init__(words=_load_words(vocab_size), max_turns=MAX_TURNS)
+    def __init__(self, vocab_size, goal_word=None):
+        super().__init__(words=_load_words(vocab_size), max_turns=MAX_TURNS, goal_word=goal_word)
 
 
 class WordleEnv100(WordleEnvBase):
