@@ -1,5 +1,5 @@
 from argparse import ArgumentParser
-from spellbond import Wordle_RL, SARSA
+from spellbond import SARSA
 import omegaconf
 
 if __name__ == "__main__":
@@ -9,5 +9,13 @@ if __name__ == "__main__":
     args = parser.parse_args()
     config = omegaconf.OmegaConf.load('../spellbond/models/configs.yaml')
     game = SARSA(args, config)
-    game.train()
+    # game.train()
     # game.play()
+
+    with open("words.txt", "r") as f:
+        words = [x.strip() for x in f.readlines()]
+
+    turns = []
+    for word in words:
+        turns.append(game.infer(goal_word=word))
+    print(turns)

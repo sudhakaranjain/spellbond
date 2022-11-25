@@ -4,7 +4,7 @@ import numpy as np
 from spellbond.wordle.env.const import WORDLE_N, ALPHABETS, POSSIBILITIES
 
 
-def initialize_env(words):
+def initialize_env(words, goal_word):
     action_space = []
     new_state = np.tile(np.array([1, 0, 0], dtype=np.float32), (len(ALPHABETS), WORDLE_N, 1))
     hint = np.zeros(len(ALPHABETS), dtype=np.float32)
@@ -15,7 +15,10 @@ def initialize_env(words):
             alpha_idx = ALPHABETS[char]
             action[alpha_idx, char_idx] = 1
         action_space.append(action)
-    goal_idx = np.random.choice(len(words))
+    if goal_word:
+        goal_idx = words.index(goal_word)
+    else:
+        goal_idx = np.random.choice(len(words))
     return words[goal_idx], action_space[goal_idx], np.array(action_space, dtype=np.float32), (new_state, hint)
 
 
