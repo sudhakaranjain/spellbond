@@ -19,11 +19,4 @@ cd scripts
 python run.py
 ```
 
-### Variations
-There are three environments to choose from:
-- "WordleEnv10-v0": Wordle with 10 words (easy)
-- "WordleEnv100-v0": Wordle with 100 words (medium)
-- "WordleEnvFull-v0": Wordle with all words (hard)
-
-Other variations can be added by subclassing WordleEnvBase. Make sure to add the new variation to both __init__.py files to register them to gym properly.
 
