@@ -13,7 +13,7 @@ if __name__ == "__main__":
     # game.play()
 
     with open("words.txt", "r") as f:
-        words = [x.strip().upper() for x in f.readlines()]
+        words = [x.strip() for x in f.readlines()]
 
     turns = []
     for word in words:
