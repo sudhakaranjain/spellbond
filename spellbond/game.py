@@ -419,4 +419,4 @@ class SARSA:
             with torch.no_grad():
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
             if done:
-                break
+                return turn_no + 1
