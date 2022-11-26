@@ -206,6 +206,7 @@ class SARSA:
         self.critic = Critic_SARSA(self.config).to(device)
         self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor)
         self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic)
+        self.scheduler_a = self.scheduler_c = None
 
     def train_critic(self, replay_buffer):
         with torch.no_grad():
@@ -420,3 +421,70 @@ class SARSA:
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
             if done:
                 return turn_no + 1
+
+    def finetune(self, model_checkpoint: str = 'models.pth') -> None:
+        accuracy_buffer = [0] * 100
+        turn_buffer = [MAX_TURNS] * 100
+        buffer_idx = 0
+        prev_accuracy = 0
+        epoch = 0
+
+        actor_weights, critic_weights = load_models(
+            os.path.join(self.config.train.checkpoint_path, model_checkpoint))
+        self.critic.load_state_dict(critic_weights)
+        self.critic.eval().to(device)
+        self.actor.load_state_dict(actor_weights)
+        self.actor.eval().to(device)
+
+        # redefine optimizer values
+        self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor * 0.1)
+        self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic * 0.1)
+        self.scheduler_a = torch.optim.lr_scheduler.ExponentialLR(self.optim_actor, gamma=0.98, last_epoch=-1)
+        self.scheduler_c = torch.optim.lr_scheduler.ExponentialLR(self.optim_critic, gamma=0.98, last_epoch=-1)
+
+        with tqdm(total=100) as pbar:
+            replay_buffer = list()
+            while sum(accuracy_buffer) < 99 or sum(turn_buffer) / 100 >= 2:
+                # Create the gym env and reset the state
+                env = gym.make(self.arg.env, vocab_size=None)
+                new_state, action_space, _ = env.reset()
+                for turn_no in range(MAX_TURNS):
+                    action, word, prob = self.predict_action(new_state, turn_no, action_space, env.words, True)
+                    # LOGGER.info(f"Guessed word: {word}")
+                    current_state = copy.deepcopy(new_state)
+                    current_action = copy.deepcopy(action)
+                    current_action_space = copy.deepcopy(action_space)
+                    new_state, reward, done, _, info = env.step(word)
+                    action_space = info['action_space']
+                    replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
+                                          reward / 5 - self.config.train.rho * turn_no, done, turn_no))
+
+                    if len(replay_buffer) >= self.batch_size:
+                        self.train_critic(replay_buffer)
+                        self.train_actor(replay_buffer)
+                        replay_buffer = list()
+
+                    if done:
+                        if word == env.goal_word:
+                            accuracy_buffer[buffer_idx] = 1
+                        else:
+                            accuracy_buffer[buffer_idx] = 0
+                        turn_buffer[buffer_idx] = turn_no + 1
+                        break
+                if sum(accuracy_buffer) > prev_accuracy:
+                    pbar.update(sum(accuracy_buffer) - prev_accuracy)
+                    prev_accuracy = sum(accuracy_buffer)
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
+                if epoch % 10000 == 0:
+                    self.scheduler_a.step()
+                    self.scheduler_c.step()
+                    print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                          f"Average turns: {sum(turn_buffer) / 100}")
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
+                epoch += 1
+                buffer_idx = epoch % 100
+
+            print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                  f"Average turns: {sum(turn_buffer) / 100}")
