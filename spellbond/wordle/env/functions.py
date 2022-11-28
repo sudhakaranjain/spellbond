@@ -22,11 +22,18 @@ def initialize_env(words, goal_word):
     return words[goal_idx], action_space[goal_idx], np.array(action_space, dtype=np.float32), (new_state, hint)
 
 
-def update_action_space(state, action_space, words):
+def update_action_space(state, action_space, words, predicted_word, inference=False):
     new_action_space = []
     new_words = []
     correct_char = []
     state, hint = state
+
+    if inference:
+        idx = words.index(predicted_word)
+        words.remove(predicted_word)
+        action_space = np.delete(action_space, idx, 0)
+        return action_space, words
+
     for alpha_idx in ALPHABETS.values():
         for char_idx in range(WORDLE_N):
             if state[alpha_idx, char_idx, POSSIBILITIES['YES']] == 1:

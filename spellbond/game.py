@@ -372,7 +372,7 @@ class SARSA:
         self.critic.eval().to(device)
         self.actor.load_state_dict(actor_weights)
         self.actor.eval().to(device)
-        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
+        env = gym.make(self.arg.env, vocab_size=None)
         new_state, action_space, _ = env.reset()
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
@@ -394,39 +394,12 @@ class SARSA:
             if done:
                 break
 
-    def infer(self, goal_word: str = 'grime', model_checkpoint: str = 'models.pth', max_num_turns: int = MAX_TURNS):
-        goal_word = goal_word.upper()
-        actor_weights, critic_weights = load_models(
-            os.path.join(self.config.train.checkpoint_path, model_checkpoint))
-        self.critic.load_state_dict(critic_weights)
-        self.critic.eval().to(device)
-        self.actor.load_state_dict(actor_weights)
-        self.actor.eval().to(device)
-        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size, goal_word=goal_word)
-        new_state, action_space, _ = env.reset()
-
-        for turn_no in range(max_num_turns):
-            new_state_critic, hint = copy.deepcopy(new_state)
-            action, word, prob = self.predict_action(new_state, turn_no, action_space, env.words, False)
-            new_state, reward, done, _, info = env.step(word)
-            action_space = info['action_space']
-            print(f"For turn {turn_no + 1} Predicted word: {word} Goal Word: {env.goal_word}")
-            print(f'True reward: {reward}')
-            turn_encoding = torch.tensor([0] * MAX_TURNS)
-            turn_encoding[turn_no] = 1
-            torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
-                                     turn_encoding,
-                                     torch.tensor(action).view(-1, ))).to(device).unsqueeze(dim=0)
-            with torch.no_grad():
-                print(f'Critic Prediction: {self.critic(torch_state)} \n')
-            if done:
-                return turn_no + 1
-
     def finetune(self, model_checkpoint: str = 'models.pth') -> None:
         accuracy_buffer = [0] * 100
         turn_buffer = [MAX_TURNS] * 100
         buffer_idx = 0
         prev_accuracy = 0
+        prev_avg_turns = MAX_TURNS
         epoch = 0
 
         actor_weights, critic_weights = load_models(
@@ -437,10 +410,10 @@ class SARSA:
         self.actor.eval().to(device)
 
         # redefine optimizer values
-        self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor * 0.1)
-        self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic * 0.1)
-        self.scheduler_a = torch.optim.lr_scheduler.ExponentialLR(self.optim_actor, gamma=0.98, last_epoch=-1)
-        self.scheduler_c = torch.optim.lr_scheduler.ExponentialLR(self.optim_critic, gamma=0.98, last_epoch=-1)
+        self.optim_actor = torch.optim.Adam(self.actor.parameters(), self.config.optimizer.lr_actor)
+        self.optim_critic = torch.optim.Adam(self.critic.parameters(), self.config.optimizer.lr_critic)
+        self.scheduler_a = torch.optim.lr_scheduler.ExponentialLR(self.optim_actor, gamma=0.995, last_epoch=-1)
+        self.scheduler_c = torch.optim.lr_scheduler.ExponentialLR(self.optim_critic, gamma=0.995, last_epoch=-1)
 
         with tqdm(total=100) as pbar:
             replay_buffer = list()
@@ -474,17 +447,48 @@ class SARSA:
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
-                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
+                    if sum(turn_buffer) / 100 < prev_avg_turns:
+                        prev_avg_turns = sum(turn_buffer) / 100
+                        torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                                   os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
+                        if epoch > 10000:
+                            print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                                  f"Average turns: {sum(turn_buffer) / 100}")
                 if epoch % 10000 == 0:
                     self.scheduler_a.step()
                     self.scheduler_c.step()
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
-                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
                 epoch += 1
                 buffer_idx = epoch % 100
 
             print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                   f"Average turns: {sum(turn_buffer) / 100}")
+
+    def infer(self, goal_word: str = 'grime', model_checkpoint: str = 'models_finetuned.pth', max_num_turns: int = MAX_TURNS):
+        goal_word = goal_word.upper()
+        actor_weights, critic_weights = load_models(
+            os.path.join(self.config.train.checkpoint_path, model_checkpoint))
+        self.critic.load_state_dict(critic_weights)
+        self.critic.eval().to(device)
+        self.actor.load_state_dict(actor_weights)
+        self.actor.eval().to(device)
+        env = gym.make(self.arg.env, vocab_size=None, goal_word=goal_word, inference=True)
+        new_state, action_space, _ = env.reset()
+
+        for turn_no in range(max_num_turns):
+            new_state_critic, hint = copy.deepcopy(new_state)
+            action, word, prob = self.predict_action(new_state, turn_no, action_space, env.words, False)
+            new_state, reward, done, _, info = env.step(word)
+            action_space = info['action_space']
+            print(f"For turn {turn_no + 1} Predicted word: {word} Goal Word: {env.goal_word}")
+            print(f'True reward: {reward}')
+            turn_encoding = torch.tensor([0] * MAX_TURNS)
+            turn_encoding[turn_no] = 1
+            torch_state = torch.cat((torch.tensor(new_state_critic).view(-1, ), torch.tensor(hint).view(-1, ),
+                                     turn_encoding,
+                                     torch.tensor(action).view(-1, ))).to(device).unsqueeze(dim=0)
+            with torch.no_grad():
+                print(f'Critic Prediction: {self.critic(torch_state)} \n')
+            if done:
+                return turn_no + 1
