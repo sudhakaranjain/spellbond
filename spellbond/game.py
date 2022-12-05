@@ -447,13 +447,12 @@ class SARSA:
                 if sum(accuracy_buffer) > prev_accuracy:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
-                    if sum(turn_buffer) / 100 < prev_avg_turns:
-                        prev_avg_turns = sum(turn_buffer) / 100
-                        torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                                   os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
-                        if epoch > 10000:
-                            print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
-                                  f"Average turns: {sum(turn_buffer) / 100}")
+                if sum(turn_buffer) / 100 < prev_avg_turns and epoch > 10000:
+                    prev_avg_turns = sum(turn_buffer) / 100
+                    torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
+                               os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
+                    print(f"Saved model at {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
+                          f"Average turns: {sum(turn_buffer) / 100}")
                 if epoch % 10000 == 0:
                     self.scheduler_a.step()
                     self.scheduler_c.step()
