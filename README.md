@@ -1,17 +1,27 @@
-# spellbond
+# SpellBond
 Gym environment for the game Wordle. A simple action, state, and observation is included, with a random agent. Note that the spaces are very simplistic, and only included for a working example of the env.
 
 ### How to run
-A game can be played by the random agent by running:
+- Python >=3.8 required
+- Create python virtual environment and install the `requirements.txt` file:
 ```commandline
-python main.py
+python -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
 ```
-
-### Variations
-There are three environments to choose from:
-- "WordleEnv10-v0": Wordle with 10 words (easy)
-- "WordleEnv100-v0": Wordle with 100 words (medium)
-- "WordleEnvFull-v0": Wordle with all words (hard)
-
-Other variations can be added by subclassing WordleEnvBase. Make sure to add the new variation to both __init__.py files to register them to gym properly.
-
+- From the parent folder, install SpellBond as a package:
+```commandline
+pip install -e .
+```
+To execute inference on full vocab, run the following command from `scripts` folder:
+```commandline
+cd scripts
+python run.py --task infer --test-file <path to testfile>
+```
+The test-file has a default value of "words.txt".
+Optionally, to execute inference on partial vocab size, run the following:  
+NOTE: Before executing, update the test-file to contain words only from this partial vocab list 
+```commandline
+python run.py --vocab-size {vocab_size} --task infer --test-file <path to testfile>
+```
+`vocab_size` can either be None (default, full vocab) or 1000.
