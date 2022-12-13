@@ -110,6 +110,7 @@ class Wordle_RL:
     def predict_action(self, state, action_space, words, training=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
+
         state, hint = state
         state = torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ))).unsqueeze(dim=0).to(device)
         with torch.no_grad():
@@ -159,11 +160,11 @@ class Wordle_RL:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+                               os.path.join(self.config.train.checkpoint_path, f'models_{self.arg.vocab_size}.pth'))
                 if epoch % 50000 == 0:
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+                               os.path.join(self.config.train.checkpoint_path, f'models_{self.arg.vocab_size}.pth'))
                 buffer_idx += 1 if buffer_idx < 99 else 0
                 epoch += 1
 
@@ -231,8 +232,8 @@ class SARSA:
                 turn_encoding = torch.tensor([0] * MAX_TURNS)
                 turn_encoding[turn_no] = 1
                 states_actions.append(torch.cat((torch.tensor(state).view(-1, ),
-                                      torch.tensor(hint).view(-1, ), turn_encoding,
-                                      torch.tensor(action).view(-1, ))).to(device))
+                                                 torch.tensor(hint).view(-1, ), turn_encoding,
+                                                 torch.tensor(action).view(-1, ))).to(device))
 
         self.critic.train()
         states_actions = torch.stack(states_actions).to(device)
@@ -257,8 +258,9 @@ class SARSA:
                 states.append(torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
                                          turn_encoding)).to(device))
                 states_actions = [torch.cat((torch.tensor(state).view(-1, ), torch.tensor(hint).view(-1, ),
-                                  turn_encoding,
-                                  torch.tensor(action).view(-1, ))).to(device) for action in current_action_space]
+                                             turn_encoding,
+                                             torch.tensor(action).view(-1, ))).to(device) for action in
+                                  current_action_space]
                 states_actions = torch.stack(states_actions).to(device)
                 max_q_index = np.argmax(self.critic(states_actions).cpu().numpy())
                 target_actions.append(torch.tensor(current_action_space[max_q_index]).view(-1, ))
@@ -275,6 +277,7 @@ class SARSA:
     def predict_action(self, state, turn_no, action_space, words=None, on_policy=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
+
         state, hint = state
         turn_encoding = torch.tensor([0] * MAX_TURNS)
         turn_encoding[turn_no] = 1
@@ -297,6 +300,7 @@ class SARSA:
     def predict_raw_action(self, state, turn_no, action_space, words=None, on_policy=True):
         def softmax(x):
             return np.exp(x) / np.exp(x).sum()
+
         alphabets = list(ALPHABETS.keys())
         state, hint = state
         turn_encoding = torch.tensor([0] * MAX_TURNS)
@@ -335,7 +339,7 @@ class SARSA:
                     new_state, reward, done, _, info = env.step(word)
                     action_space = info['action_space']
                     replay_buffer.append((current_state, current_action, current_action_space, new_state, action_space,
-                                          reward/5 - self.config.train.rho * turn_no, done, turn_no))
+                                          reward / 5 - self.config.train.rho * turn_no, done, turn_no))
 
                     if len(replay_buffer) >= self.batch_size:
                         self.train_critic(replay_buffer)
@@ -353,12 +357,12 @@ class SARSA:
                     pbar.update(sum(accuracy_buffer) - prev_accuracy)
                     prev_accuracy = sum(accuracy_buffer)
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+                               os.path.join(self.config.train.checkpoint_path, f'models_{self.arg.vocab_size}.pth'))
                 if epoch % 10000 == 0:
                     print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+                               os.path.join(self.config.train.checkpoint_path, f'models_{self.arg.vocab_size}.pth'))
                 epoch += 1
                 buffer_idx = epoch % 100
 
@@ -367,12 +371,12 @@ class SARSA:
 
     def play(self):
         actor_weights, critic_weights = load_models(
-            os.path.join(self.config.train.checkpoint_path, 'models.pth'))
+            os.path.join(self.config.train.checkpoint_path, f'models_{self.arg.vocab_size}.pth'))
         self.critic.load_state_dict(critic_weights)
         self.critic.eval().to(device)
         self.actor.load_state_dict(actor_weights)
         self.actor.eval().to(device)
-        env = gym.make(self.arg.env, vocab_size=None)
+        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
         new_state, action_space, _ = env.reset()
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
@@ -450,7 +454,8 @@ class SARSA:
                 if sum(turn_buffer) / 100 < prev_avg_turns and epoch > 10000:
                     prev_avg_turns = sum(turn_buffer) / 100
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
-                               os.path.join(self.config.train.checkpoint_path, 'models_finetuned.pth'))
+                               os.path.join(self.config.train.checkpoint_path,
+                                            f'models_finetuned_{self.arg.vocab_size}.pth'))
                     print(f"Saved model at {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
                 if epoch % 10000 == 0:
@@ -464,7 +469,8 @@ class SARSA:
             print(f"Completed {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                   f"Average turns: {sum(turn_buffer) / 100}")
 
-    def infer(self, goal_word: str = 'grime', model_checkpoint: str = 'models_finetuned.pth', max_num_turns: int = MAX_TURNS):
+    def infer(self, goal_word: str = 'grime', model_checkpoint: str = f'models_finetuned_full.pth',
+              max_num_turns: int = MAX_TURNS):
         goal_word = goal_word.upper()
         actor_weights, critic_weights = load_models(
             os.path.join(self.config.train.checkpoint_path, model_checkpoint))
@@ -490,4 +496,8 @@ class SARSA:
             with torch.no_grad():
                 print(f'Critic Prediction: {self.critic(torch_state)} \n')
             if done:
-                return turn_no + 1
+                if word == env.goal_word:
+                    predicted = 1
+                else:
+                    predicted = 0
+                return turn_no + 1, predicted
