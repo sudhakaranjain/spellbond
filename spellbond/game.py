@@ -376,7 +376,7 @@ class SARSA:
         self.critic.eval().to(device)
         self.actor.load_state_dict(actor_weights)
         self.actor.eval().to(device)
-        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size)
+        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size, inference=True)
         new_state, action_space, _ = env.reset()
         for turn_no in range(MAX_TURNS):
             print(f'turn {turn_no + 1}: ')
@@ -398,7 +398,7 @@ class SARSA:
             if done:
                 break
 
-    def finetune(self, model_checkpoint: str = 'models.pth') -> None:
+    def finetune(self, model_checkpoint: str = 'models_1000.pth') -> None:
         accuracy_buffer = [0] * 100
         turn_buffer = [MAX_TURNS] * 100
         buffer_idx = 0
@@ -455,7 +455,7 @@ class SARSA:
                     prev_avg_turns = sum(turn_buffer) / 100
                     torch.save({'actor': self.actor.state_dict(), 'critic': self.critic.state_dict()},
                                os.path.join(self.config.train.checkpoint_path,
-                                            f'models_finetuned_{self.arg.vocab_size}.pth'))
+                                            f'models_finetuned_full.pth'))
                     print(f"Saved model at {epoch} epochs, Accuracy: {sum(accuracy_buffer) / 100}, "
                           f"Average turns: {sum(turn_buffer) / 100}")
                 if epoch % 10000 == 0:
