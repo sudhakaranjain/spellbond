@@ -13,10 +13,15 @@ pip install -r requirements.txt
 ```commandline
 pip install -e .
 ```
-Run the following command from `scripts` folder:
+To execute inference on full vocab, run the following command from `scripts` folder:
 ```commandline
 cd scripts
-python run.py
+python run.py --task infer --test-file <path to testfile>
 ```
-
-
+The test-file has a default value of "words.txt".
+Optionally, to execute inference on partial vocab size, run the following:  
+NOTE: Before executing, update the test-file to contain words only from this partial vocab list 
+```commandline
+python run.py --vocab-size {vocab_size} --task infer --test-file <path to testfile>
+```
+`vocab_size` can either be None (default, full vocab) or 1000.
