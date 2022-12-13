@@ -478,7 +478,7 @@ class SARSA:
         self.critic.eval().to(device)
         self.actor.load_state_dict(actor_weights)
         self.actor.eval().to(device)
-        env = gym.make(self.arg.env, vocab_size=None, goal_word=goal_word, inference=True)
+        env = gym.make(self.arg.env, vocab_size=self.arg.vocab_size, goal_word=goal_word, inference=True)
         new_state, action_space, _ = env.reset()
 
         for turn_no in range(max_num_turns):
