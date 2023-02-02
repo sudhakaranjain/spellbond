@@ -24,4 +24,8 @@ NOTE: Before executing, update the test-file to contain words only from this par
 ```commandline
 python run.py --vocab-size {vocab_size} --task infer --test-file <path to testfile>
 ```
-`vocab_size` can either be None (default, full vocab) or 1000.
+`vocab_size` can either be None (default, full vocab) or 1000. 
+
+### Information regarding the algorithms implemented: 
+- `Wordle_RL` class represents the ACLA RL algorithm (adapted CACLA to discrete state/action spaces) 
+- `SARSA` class represents the actor-critic RL algorithm which can be trained either on-policy or off-policy 
